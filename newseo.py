@@ -7,17 +7,31 @@
 # - Sequential batch (≤10), HTML-only reports, GPT-5 chat
 
 import io, os, sys, re, json, zipfile, unicodedata
-from datetime import datetime
 from xml.etree import ElementTree as ET
 
 import streamlit as st
 import pandas as pd
 
-# ----------------------- SDKs -----------------------
+# =====================================================
+#                SDK IMPORT & WRAPPERS
+# =====================================================
+
+OPENAI_CLIENT_MODE = None  # "new" or "old"
+
 try:
+    # New OpenAI SDK (>= 1.0.0)
     from openai import OpenAI
+    OPENAI_CLIENT_MODE = "new"
 except Exception:
-    OpenAI = None
+    try:
+        # Legacy SDK
+        import openai
+        OpenAI = None
+        OPENAI_CLIENT_MODE = "old"
+    except Exception:
+        OpenAI = None
+        openai = None
+        OPENAI_CLIENT_MODE = None
 
 try:
     import google.generativeai as genai
@@ -29,7 +43,40 @@ try:
 except Exception:
     anthropic = None
 
-# ----------------- App / UTF-8 setup ----------------
+
+def openai_chat_completion(api_key, model, messages, temperature: float = 0.2) -> str:
+    """
+    Wrapper that works with both:
+    - new OpenAI SDK (OpenAI class)
+    - old openai.ChatCompletion API
+
+    Returns the response text (str).
+    """
+    if OPENAI_CLIENT_MODE == "new":
+        client = OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            messages=messages,
+        )
+        return resp.choices[0].message.content or ""
+    elif OPENAI_CLIENT_MODE == "old":
+        openai.api_key = api_key
+        resp = openai.ChatCompletion.create(
+            model=model,
+            temperature=temperature,
+            messages=messages,
+        )
+        return resp["choices"][0]["message"]["content"] or ""
+    else:
+        raise RuntimeError(
+            "OpenAI SDK not available. Make sure `openai` is in requirements.txt."
+        )
+
+# =====================================================
+#           APP / UTF-8 / GLOBAL CONSTANTS
+# =====================================================
+
 st.set_page_config(page_title="Shakti 1.2 — PW SEO Optimizer", layout="wide")
 os.environ["PYTHONIOENCODING"] = "utf-8"
 os.environ["PYTHONUTF8"] = "1"
@@ -46,7 +93,7 @@ SMART_MAP = {
     "\u201d": '"',
     "\u2013": "-",
     "\u2014": "-",
-    "\u00A0": " "
+    "\u00A0": " ",
 }
 
 
@@ -81,8 +128,10 @@ OPENAI_API_KEY_INLINE = ""
 GEMINI_API_KEY_INLINE = ""
 ANTHROPIC_API_KEY_INLINE = ""
 
+# =====================================================
+#                    HELPERS
+# =====================================================
 
-# ----------------------- Helpers -----------------------
 def extract_text_from_docx(file_bytes: bytes) -> str:
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
@@ -218,8 +267,10 @@ def theme_css(theme: str) -> str:
     .stDownloadButton > button { background:#4f46e5 !important; color:#fff !important; border:0 !important; }
     """
 
+# =====================================================
+#                   HEADER / LAYOUT
+# =====================================================
 
-# ----------------------- Header / Theme -----------------------
 st.sidebar.header("Shakti 1.2")
 theme = st.sidebar.selectbox("Theme", ["Blue", "Red", "Green", "Gradient"], index=0)
 st.markdown(f"<style>{theme_css(theme)}</style>", unsafe_allow_html=True)
@@ -238,10 +289,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ----------------------- Tabs -----------------------
 tabs = st.tabs(["① Optimize (Single)", "② AI Engines", "③ Batch", "④ GPT-5 Chat"])
 
-# ======================= ① Optimize (Single) =======================
+# =====================================================
+#           TAB ① — SINGLE OPTIMIZE
+# =====================================================
+
 with tabs[0]:
     st.subheader("Listing Inputs")
     prev_title = st.text_input("Previous Title", "")
@@ -250,6 +303,7 @@ with tabs[0]:
 
     st.markdown("---")
     st.subheader("System Prompts (Single)")
+
     # L1 prompt (paste or DOCX)
     st.caption("Level 1 (OpenAI)")
     use_docx_l1 = st.toggle("Load L1 from .docx", key="docx_l1_single")
@@ -304,7 +358,7 @@ Return ONLY a JSON object with keys:
 No extra text or markdown.
 """
 
-    def run_l1_l2(
+    def run_l1_l2_single(
         prev_title,
         prev_desc,
         product_link,
@@ -320,7 +374,7 @@ No extra text or markdown.
         anthropic_key,
         claude_model,
     ):
-        # L1
+        # ---------- L1 ----------
         u1 = f"""
 You are given an existing Amazon listing fragment.
 
@@ -333,18 +387,17 @@ TASK: Using the Level-1 system prompt’s framework, produce an improved listing
 {single_contract()}
 """.strip()
 
-        if OpenAI is None:
-            raise RuntimeError("openai SDK not installed. pip install openai")
-        c1 = OpenAI(api_key=openai_key)
-        r1 = c1.chat.completions.create(
-            model=openai_model,
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": to_utf8_clean(sp_l1)},
-                {"role": "user", "content": to_utf8_clean(u1)},
-            ],
+        raw1 = to_utf8_clean(
+            openai_chat_completion(
+                api_key=openai_key,
+                model=openai_model,
+                temperature=0.2,
+                messages=[
+                    {"role": "system", "content": to_utf8_clean(sp_l1)},
+                    {"role": "user", "content": to_utf8_clean(u1)},
+                ],
+            ).strip()
         )
-        raw1 = to_utf8_clean((r1.choices[0].message.content or "").strip())
         p1 = coerce_json(raw1)
         if not p1:
             raise RuntimeError("L1 returned non-JSON.")
@@ -353,7 +406,7 @@ TASK: Using the Level-1 system prompt’s framework, produce an improved listing
         if second_engine == "None":
             return draft, draft
 
-        # L2
+        # ---------- L2 ----------
         u2 = f"""
 Refine a JSON listing produced by another model using the Level-2 system prompt rules.
 - Keep the exact JSON structure (new_title, new_description, keywords_short, keywords_mid, keywords_long).
@@ -367,21 +420,22 @@ Product Link: {product_link or '(none)'}
 """.strip()
 
         if second_engine == "OpenAI (second pass)":
-            c2 = OpenAI(api_key=openai2_key or openai_key)
-            r2 = c2.chat.completions.create(
-                model=openai2_model or openai_model,
-                temperature=0.2,
-                messages=[
-                    {"role": "system", "content": to_utf8_clean(sp_l2)},
-                    {
-                        "role": "user",
-                        "content": to_utf8_clean(u2)
-                        + "\n\nDraft JSON:\n"
-                        + json.dumps(draft, ensure_ascii=False),
-                    },
-                ],
+            raw2 = to_utf8_clean(
+                openai_chat_completion(
+                    api_key=openai2_key or openai_key,
+                    model=openai2_model or openai_model,
+                    temperature=0.2,
+                    messages=[
+                        {"role": "system", "content": to_utf8_clean(sp_l2)},
+                        {
+                            "role": "user",
+                            "content": to_utf8_clean(u2)
+                            + "\n\nDraft JSON:\n"
+                            + json.dumps(draft, ensure_ascii=False),
+                        },
+                    ],
+                ).strip()
             )
-            raw2 = to_utf8_clean((r2.choices[0].message.content or "").strip())
             p2 = coerce_json(raw2)
             return draft, ensure_listing_shape(p2) if p2 else draft
 
@@ -433,9 +487,8 @@ Product Link: {product_link or '(none)'}
 
         return draft, draft
 
-    # Run button (single)
+    # Run (single)
     if st.button("Run L1 → L2 (Single) 🚀", type="primary"):
-        # Read engine config from tab ②
         cfg = st.session_state.get("engine_cfg", {})
         openai_key = cfg.get("openai_key")
         openai_model = cfg.get("openai_model")
@@ -465,7 +518,7 @@ Product Link: {product_link or '(none)'}
             st.stop()
 
         try:
-            draft_result, final_result = run_l1_l2(
+            draft_result, final_result = run_l1_l2_single(
                 prev_title,
                 prev_desc,
                 product_link,
@@ -505,7 +558,6 @@ Product Link: {product_link or '(none)'}
                     "\n".join("• " + k for k in final_result["keywords_long"]) or "—"
                 )
 
-            # Table (taller)
             df_single = pd.DataFrame(
                 [
                     {
@@ -554,7 +606,10 @@ Product Link: {product_link or '(none)'}
         except Exception as e:
             st.error(f"Run failed: {e}")
 
-# ======================= ② AI Engines (Config) =======================
+# =====================================================
+#           TAB ② — ENGINE CONFIG
+# =====================================================
+
 with tabs[1]:
     st.subheader("Primary Engine — OpenAI (required)")
     openai_key_mode = st.radio(
@@ -654,14 +709,16 @@ with tabs[1]:
     }
     st.success("Engine configuration saved.")
 
-# ======================= ③ Batch (Sequential, ≤10) =======================
+# =====================================================
+#           TAB ③ — BATCH (≤10 ROWS)
+# =====================================================
+
 with tabs[2]:
     st.subheader("Batch (sequential, up to 10 rows)")
     st.caption(
         "Upload a CSV with columns: Previous Title, Previous Description, Product Link (optional). Each row is processed one-by-one for top consistency."
     )
 
-    # Batch prompts (ENTER ONCE for whole batch)
     st.markdown("**Batch System Prompts**")
     batch_l1_prompt = st.text_area(
         "Level 1 (OpenAI) — Batch Prompt", height=160, key="batch_l1_prompt"
@@ -701,7 +758,7 @@ No extra text or markdown.
         anthropic_key,
         claude_model,
     ):
-        # L1
+        # ---------- L1 ----------
         u1 = f"""
 You are given an existing Amazon listing fragment.
 
@@ -713,18 +770,17 @@ Inputs:
 TASK: Using the Level-1 system prompt’s framework, produce an improved listing.
 {batch_contract()}
 """.strip()
-        if OpenAI is None:
-            raise RuntimeError("openai SDK not installed. pip install openai")
-        c1 = OpenAI(api_key=openai_key)
-        r1 = c1.chat.completions.create(
-            model=openai_model,
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": to_utf8_clean(sp_l1)},
-                {"role": "user", "content": to_utf8_clean(u1)},
-            ],
+        raw1 = to_utf8_clean(
+            openai_chat_completion(
+                api_key=openai_key,
+                model=openai_model,
+                temperature=0.2,
+                messages=[
+                    {"role": "system", "content": to_utf8_clean(sp_l1)},
+                    {"role": "user", "content": to_utf8_clean(u1)},
+                ],
+            ).strip()
         )
-        raw1 = to_utf8_clean((r1.choices[0].message.content or "").strip())
         p1 = coerce_json(raw1)
         if not p1:
             raise RuntimeError("L1 returned non-JSON.")
@@ -733,7 +789,7 @@ TASK: Using the Level-1 system prompt’s framework, produce an improved listing
         if second_engine == "None":
             return draft, draft
 
-        # L2
+        # ---------- L2 ----------
         u2 = f"""
 Refine a JSON listing produced by another model using the Level-2 system prompt rules.
 - Keep the exact JSON structure (new_title, new_description, keywords_short, keywords_mid, keywords_long).
@@ -747,21 +803,22 @@ Product Link: {product_link or '(none)'}
 """.strip()
 
         if second_engine == "OpenAI (second pass)":
-            c2 = OpenAI(api_key=openai2_key or openai_key)
-            r2 = c2.chat.completions.create(
-                model=openai2_model or openai_model,
-                temperature=0.2,
-                messages=[
-                    {"role": "system", "content": to_utf8_clean(sp_l2)},
-                    {
-                        "role": "user",
-                        "content": to_utf8_clean(u2)
-                        + "\n\nDraft JSON:\n"
-                        + json.dumps(draft, ensure_ascii=False),
-                    },
-                ],
+            raw2 = to_utf8_clean(
+                openai_chat_completion(
+                    api_key=openai2_key or openai_key,
+                    model=openai2_model or openai_model,
+                    temperature=0.2,
+                    messages=[
+                        {"role": "system", "content": to_utf8_clean(sp_l2)},
+                        {
+                            "role": "user",
+                            "content": to_utf8_clean(u2)
+                            + "\n\nDraft JSON:\n"
+                            + json.dumps(draft, ensure_ascii=False),
+                        },
+                    ],
+                ).strip()
             )
-            raw2 = to_utf8_clean((r2.choices[0].message.content or "").strip())
             p2 = coerce_json(raw2)
             return draft, ensure_listing_shape(p2) if p2 else draft
 
@@ -816,7 +873,6 @@ Product Link: {product_link or '(none)'}
     if batch_file:
         try:
             df_in = pd.read_csv(batch_file)
-            # normalize columns
             cols = {c.lower().strip(): c for c in df_in.columns}
 
             def pick(*names):
@@ -839,7 +895,6 @@ Product Link: {product_link or '(none)'}
                 st.warning("Only first 10 rows will be processed (sequential).")
                 df_in = df_in.head(10)
 
-            # Engines from tab ②
             cfg = st.session_state.get("engine_cfg", {})
             openai_key = cfg.get("openai_key")
             openai_model = cfg.get("openai_model")
@@ -852,7 +907,6 @@ Product Link: {product_link or '(none)'}
             claude_model = cfg.get("claude_model")
 
             if st.button("Run Batch (Sequential) 🚀", type="primary"):
-                # validations
                 if not openai_key:
                     st.error("OpenAI API key required (tab ②).")
                     st.stop()
@@ -917,7 +971,6 @@ Product Link: {product_link or '(none)'}
                                 ),
                             }
                         )
-                        # Per-item HTML
                         html_bytes, _, fname = html_report_bytes(
                             title_text=f"Shakti 1.2 — Batch Report #{i}",
                             inputs={
@@ -967,7 +1020,10 @@ Product Link: {product_link or '(none)'}
         except Exception as e:
             st.error(f"Unable to read CSV: {e}")
 
-# ======================= ④ GPT-5 Chat =======================
+# =====================================================
+#           TAB ④ — GPT-5 CHAT
+# =====================================================
+
 with tabs[3]:
     st.subheader("GPT-5 Chat Panel (OpenAI key)")
     st.caption("Pick any model (e.g., GPT-5) if your access allows.")
@@ -978,7 +1034,6 @@ with tabs[3]:
     )
     chat_model = OPENAI_MODELS[chat_model_choice]
 
-    # reuse engine tab's key or enter new
     cfg = st.session_state.get("engine_cfg", {})
     base_key = cfg.get("openai_key")
     chat_key_mode = st.radio(
@@ -997,22 +1052,19 @@ with tabs[3]:
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
+
     with st.form("chat_form", clear_on_submit=True):
         chat_input = st.text_area(
             "Message", height=120, placeholder="Ask anything…"
         )
         submitted = st.form_submit_button("Send")
+
     if submitted:
         if not chat_key:
             st.error("OpenAI API key required for chat.")
             st.stop()
         try:
             st.session_state.chat_history.append(("user", chat_input))
-            if OpenAI is None:
-                raise RuntimeError(
-                    "openai SDK not installed. pip install openai"
-                )
-            client = OpenAI(api_key=chat_key)
             msgs = [
                 {
                     "role": "system",
@@ -1023,10 +1075,12 @@ with tabs[3]:
                 msgs.append(
                     {"role": role, "content": to_utf8_clean(content)}
                 )
-            resp = client.chat.completions.create(
-                model=chat_model, temperature=0.2, messages=msgs
-            )
-            reply = (resp.choices[0].message.content or "").strip()
+            reply = openai_chat_completion(
+                api_key=chat_key,
+                model=chat_model,
+                temperature=0.2,
+                messages=msgs,
+            ).strip()
             st.session_state.chat_history.append(("assistant", reply))
         except Exception as e:
             st.error(f"Chat error: {e}")
