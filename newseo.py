@@ -5,7 +5,7 @@
 # - Theme switcher fixed (Blue/Red/Green/Gradient)
 # - Strict dropdown model lists (incl. GPT-5), no free text
 # - Sequential batch (≤10), HTML-only reports, GPT-5 chat
-
+import openai
 import io, os, sys, re, json, zipfile, unicodedata
 from datetime import datetime
 from xml.etree import ElementTree as ET
@@ -731,3 +731,4 @@ with tabs[3]:
             st.markdown(f"**You:** {content}")
         else:
             st.markdown(f"**Assistant ({chat_model_choice}):** {content}")
+
