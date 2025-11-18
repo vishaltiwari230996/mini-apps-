@@ -1,0 +1,5 @@
+streamlit
+openai>=1.40.0
+google-generativeai
+anthropic>=1.0.0
+pandas
