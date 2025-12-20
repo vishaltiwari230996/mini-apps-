@@ -748,7 +748,15 @@ def extract_flipkart_images(soup, url):
     return unique_images[:MAX_IMAGES_TO_EXTRACT]
 
 def scrape_amazon(soup, url):
-    """Comprehensive Amazon scraper with multiple fallback selectors"""
+    """Comprehensive Amazon scraper with multiple fallback selectors.
+    
+    Args:
+        soup: BeautifulSoup object of the page
+        url: Product URL
+        
+    Returns:
+        Dictionary containing scraped Amazon product data
+    """
     data = {
         "platform": "Amazon",
         "url": url,
@@ -767,55 +775,22 @@ def scrape_amazon(soup, url):
     }
     
     # Title - multiple selectors
-    title_selectors = [
-        "#productTitle",
-        "#title span",
-        "h1.a-size-large",
-        "span#productTitle",
-        "#ebooksProductTitle",
-    ]
-    data["title"] = extract_with_fallbacks(soup, title_selectors) or "NOT_FOUND"
+    data["title"] = extract_with_fallbacks(soup, AMAZON_TITLE_SELECTORS) or "NOT_FOUND"
     
     # Brand
-    brand_selectors = [
-        "#bylineInfo",
-        "a#bylineInfo",
-        ".po-brand .po-break-word",
-        "tr.po-brand td.a-span9 span",
-        "#brand",
-    ]
-    data["brand"] = extract_with_fallbacks(soup, brand_selectors) or "NOT_FOUND"
+    data["brand"] = extract_with_fallbacks(soup, AMAZON_BRAND_SELECTORS) or "NOT_FOUND"
     
     # Price
-    price_selectors = [
-        "span.a-price-whole",
-        "#priceblock_ourprice",
-        "#priceblock_dealprice",
-        "span.a-offscreen",
-        "#corePrice_feature_div span.a-offscreen",
-        "#corePriceDisplay_desktop_feature_div span.a-offscreen",
-        ".a-price .a-offscreen",
-    ]
-    data["price"] = extract_with_fallbacks(soup, price_selectors) or "NOT_FOUND"
+    data["price"] = extract_with_fallbacks(soup, AMAZON_PRICE_SELECTORS) or "NOT_FOUND"
     
     # Rating
-    rating_selectors = [
-        "span.a-icon-alt",
-        "#acrPopover span.a-icon-alt",
-        "i.a-icon-star span.a-icon-alt",
-    ]
-    rating_text = extract_with_fallbacks(soup, rating_selectors)
+    rating_text = extract_with_fallbacks(soup, AMAZON_RATING_SELECTORS)
     if rating_text:
         match = re.search(r'([\d.]+)', rating_text)
         data["rating"] = match.group(1) if match else rating_text
     
     # Review count
-    review_count_selectors = [
-        "#acrCustomerReviewText",
-        "#acrCustomerReviewLink span",
-        "span[data-hook='total-review-count']",
-    ]
-    data["review_count"] = extract_with_fallbacks(soup, review_count_selectors) or "NOT_FOUND"
+    data["review_count"] = extract_with_fallbacks(soup, AMAZON_REVIEW_COUNT_SELECTORS) or "NOT_FOUND"
     
     # Bullet points / Feature bullets
     bullet_selectors = [
@@ -911,7 +886,15 @@ def scrape_amazon(soup, url):
     return data
 
 def scrape_flipkart(soup, url):
-    """Comprehensive Flipkart scraper with multiple fallback selectors"""
+    """Comprehensive Flipkart scraper with multiple fallback selectors.
+    
+    Args:
+        soup: BeautifulSoup object of the page
+        url: Product URL
+        
+    Returns:
+        Dictionary containing scraped Flipkart product data
+    """
     data = {
         "platform": "Flipkart",
         "url": url,
@@ -931,42 +914,16 @@ def scrape_flipkart(soup, url):
     }
     
     # Title - multiple selectors (Flipkart changes classes frequently)
-    title_selectors = [
-        "span.B_NuCI",
-        "span.VU-ZEz",
-        "h1.yhB1nd span",
-        "h1._6EBuvT span",
-        ".C7fEHH h1 span",
-        "h1 span.B_NuCI",
-        "._35KyD6",
-    ]
-    data["title"] = extract_with_fallbacks(soup, title_selectors) or "NOT_FOUND"
+    data["title"] = extract_with_fallbacks(soup, FLIPKART_TITLE_SELECTORS) or "NOT_FOUND"
     
     # Brand
-    brand_selectors = [
-        "span._2WkVRV",
-        "a._2whKao",
-        ".G6XhRU",
-    ]
-    data["brand"] = extract_with_fallbacks(soup, brand_selectors) or "NOT_FOUND"
+    data["brand"] = extract_with_fallbacks(soup, FLIPKART_BRAND_SELECTORS) or "NOT_FOUND"
     
     # Price
-    price_selectors = [
-        "div._30jeq3",
-        "div._16Jk6d",
-        "._25b18c ._30jeq3",
-        "div.Nx9bqj",
-        ".CEmiEU div",
-    ]
-    data["price"] = extract_with_fallbacks(soup, price_selectors) or "NOT_FOUND"
+    data["price"] = extract_with_fallbacks(soup, FLIPKART_PRICE_SELECTORS) or "NOT_FOUND"
     
     # Rating
-    rating_selectors = [
-        "div._3LWZlK",
-        "div._2d4LTz",
-        "span._1lRcqv div._3LWZlK",
-    ]
-    data["rating"] = extract_with_fallbacks(soup, rating_selectors) or "NOT_FOUND"
+    data["rating"] = extract_with_fallbacks(soup, FLIPKART_RATING_SELECTORS) or "NOT_FOUND"
     
     # Review count
     review_selectors = [
@@ -1306,6 +1263,79 @@ def create_manual_product_data(platform, title, brand, price, rating, category, 
         "images": images,
         "input_method": "manual"
     }
+
+# -------------------------------------------------
+# SELECTOR PATTERNS
+# -------------------------------------------------
+# Amazon Selectors
+AMAZON_TITLE_SELECTORS = [
+    "#productTitle",
+    "#title span",
+    "h1.a-size-large",
+    "span#productTitle",
+    "#ebooksProductTitle",
+]
+
+AMAZON_BRAND_SELECTORS = [
+    "#bylineInfo",
+    "a#bylineInfo",
+    ".po-brand .po-break-word",
+    "tr.po-brand td.a-span9 span",
+    "#brand",
+]
+
+AMAZON_PRICE_SELECTORS = [
+    "span.a-price-whole",
+    "#priceblock_ourprice",
+    "#priceblock_dealprice",
+    "span.a-offscreen",
+    "#corePrice_feature_div span.a-offscreen",
+    "#corePriceDisplay_desktop_feature_div span.a-offscreen",
+    ".a-price .a-offscreen",
+]
+
+AMAZON_RATING_SELECTORS = [
+    "span.a-icon-alt",
+    "#acrPopover span.a-icon-alt",
+    "i.a-icon-star span.a-icon-alt",
+]
+
+AMAZON_REVIEW_COUNT_SELECTORS = [
+    "#acrCustomerReviewText",
+    "#acrCustomerReviewLink span",
+    "span[data-hook='total-review-count']",
+]
+
+# Flipkart Selectors
+FLIPKART_TITLE_SELECTORS = [
+    "span.B_NuCI",
+    "span.VU-ZEz",
+    "h1.yhB1nd span",
+    "h1._6EBuvT span",
+    ".C7fEHH h1 span",
+    "h1 span.B_NuCI",
+    "._35KyD6",
+]
+
+FLIPKART_BRAND_SELECTORS = [
+    "span._2WkVRV",
+    "a._2whKao",
+    ".G6XhRU",
+]
+
+FLIPKART_PRICE_SELECTORS = [
+    "div._30jeq3",
+    "div._16Jk6d",
+    "._25b18c ._30jeq3",
+    "div.Nx9bqj",
+    ".CEmiEU div",
+]
+
+FLIPKART_RATING_SELECTORS = [
+    "div._3LWZlK",
+    "div._2d4LTz",
+    "span._1lRcqv div._3LWZlK",
+]
 
 # -------------------------------------------------
 # COMPLIANCE CONSTANTS
@@ -2067,8 +2097,9 @@ if st.session_state.analysis_done and st.session_state.product:
                 with cols[idx % 4]:
                     try:
                         st.image(img_url, caption=f"Image {idx+1}", use_container_width=True)
-                    except:
-                        st.markdown(f"[Image {idx+1}]({img_url})")
+                    except Exception as e:
+                        st.warning(f"⚠️ Image {idx+1} failed to load")
+                        st.markdown(f"[View Image {idx+1}]({img_url})")
             
             # Show image URLs for reference
             st.markdown("**🔗 Full Resolution Image URLs:**")
@@ -2225,35 +2256,39 @@ if st.session_state.analysis_done and st.session_state.product:
                                     img_bytes = response.read()
                             
                             if img_bytes:
-                                image = Image.open(BytesIO(img_bytes))
-                                
-                                # Display the image
-                                st.image(image, caption=f"{gen_platform} - {image_types[img_type]}", use_container_width=True)
-                                
-                                # Store in session state
-                                st.session_state.generated_images[f"{gen_platform}_{img_type}"] = img_bytes
-                                
-                                # Download button
-                                st.download_button(
-                                    label=f"📥 Download {img_type.capitalize()} Image",
-                                    data=img_bytes,
-                                    file_name=f"{gen_platform.lower()}_{img_type}_image.png",
-                                    mime="image/png",
-                                    key=f"dl_{gen_platform}_{img_type}_{time.time()}"
-                                )
-                                
-                                # Show the prompt used
-                                with st.expander(f"🔧 Prompt used for {img_type}"):
-                                    st.code(img_prompt)
+                                try:
+                                    image = Image.open(BytesIO(img_bytes))
+                                    
+                                    # Display the image
+                                    st.image(image, caption=f"{gen_platform} - {image_types[img_type]}", use_container_width=True)
+                                    
+                                    # Store in session state
+                                    st.session_state.generated_images[f"{gen_platform}_{img_type}"] = img_bytes
+                                    
+                                    # Download button
+                                    st.download_button(
+                                        label=f"📥 Download {img_type.capitalize()} Image",
+                                        data=img_bytes,
+                                        file_name=f"{gen_platform.lower()}_{img_type}_image.png",
+                                        mime="image/png",
+                                        key=f"dl_{gen_platform}_{img_type}_{time.time()}"
+                                    )
+                                    
+                                    # Show the prompt used
+                                    with st.expander(f"🔧 Prompt used for {img_type}"):
+                                        st.code(img_prompt)
+                                except Exception as img_error:
+                                    st.error(f"❌ Failed to process image data for {img_type}: {str(img_error)}")
                             else:
-                                st.error(f"No image data returned for {img_type}")
+                                st.error(f"❌ No image data returned for {img_type}")
                             
                             st.markdown("---")
                             
                         except Exception as e:
-                            st.error(f"Failed to generate {img_type}: {str(e)}")
-                            with st.expander("Error details"):
+                            st.error(f"❌ Failed to generate {img_type}: {str(e)}")
+                            with st.expander("🔍 Error details"):
                                 st.code(str(e))
+                                st.caption("This error may be temporary. Try again or select a different image type.")
                 
                 st.success(f"✅ Image generation complete! All {len(selected_images)} images generated successfully.")
                 st.balloons()
@@ -2269,16 +2304,19 @@ if st.session_state.analysis_done and st.session_state.product:
             
             for idx, key in enumerate(img_keys):
                 with cols[idx % 3]:
-                    img_bytes = st.session_state.generated_images[key]
-                    image = Image.open(BytesIO(img_bytes))
-                    st.image(image, caption=key.replace("_", " ").title(), use_container_width=True)
-                    st.download_button(
-                        label=f"📥 Download",
-                        data=img_bytes,
-                        file_name=f"{key}.png",
-                        mime="image/png",
-                        key=f"dl_prev_{key}"
-                    )
+                    try:
+                        img_bytes = st.session_state.generated_images[key]
+                        image = Image.open(BytesIO(img_bytes))
+                        st.image(image, caption=key.replace("_", " ").title(), use_container_width=True)
+                        st.download_button(
+                            label=f"📥 Download",
+                            data=img_bytes,
+                            file_name=f"{key}.png",
+                            mime="image/png",
+                            key=f"dl_prev_{key}"
+                        )
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not display {key}: {str(e)}")
     
     else:
         st.warning("⚠️ Could not generate Image Brief. You can still use the analysis above for manual image creation.")
