@@ -2097,7 +2097,7 @@ if st.session_state.analysis_done and st.session_state.product:
                 with cols[idx % 4]:
                     try:
                         st.image(img_url, caption=f"Image {idx+1}", use_container_width=True)
-                    except Exception as e:
+                    except Exception:
                         st.warning(f"⚠️ Image {idx+1} failed to load")
                         st.markdown(f"[View Image {idx+1}]({img_url})")
             
