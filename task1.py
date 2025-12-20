@@ -39,6 +39,79 @@ AMAZON_BG_COLOR = "RGB(255,255,255)"
 PRODUCT_FRAME_SIZE = 85  # percentage
 
 # -------------------------------------------------
+# SELECTOR PATTERNS
+# -------------------------------------------------
+# Amazon Selectors
+AMAZON_TITLE_SELECTORS = [
+    "#productTitle",
+    "#title span",
+    "h1.a-size-large",
+    "span#productTitle",
+    "#ebooksProductTitle",
+]
+
+AMAZON_BRAND_SELECTORS = [
+    "#bylineInfo",
+    "a#bylineInfo",
+    ".po-brand .po-break-word",
+    "tr.po-brand td.a-span9 span",
+    "#brand",
+]
+
+AMAZON_PRICE_SELECTORS = [
+    "span.a-price-whole",
+    "#priceblock_ourprice",
+    "#priceblock_dealprice",
+    "span.a-offscreen",
+    "#corePrice_feature_div span.a-offscreen",
+    "#corePriceDisplay_desktop_feature_div span.a-offscreen",
+    ".a-price .a-offscreen",
+]
+
+AMAZON_RATING_SELECTORS = [
+    "span.a-icon-alt",
+    "#acrPopover span.a-icon-alt",
+    "i.a-icon-star span.a-icon-alt",
+]
+
+AMAZON_REVIEW_COUNT_SELECTORS = [
+    "#acrCustomerReviewText",
+    "#acrCustomerReviewLink span",
+    "span[data-hook='total-review-count']",
+]
+
+# Flipkart Selectors
+FLIPKART_TITLE_SELECTORS = [
+    "span.B_NuCI",
+    "span.VU-ZEz",
+    "h1.yhB1nd span",
+    "h1._6EBuvT span",
+    ".C7fEHH h1 span",
+    "h1 span.B_NuCI",
+    "._35KyD6",
+]
+
+FLIPKART_BRAND_SELECTORS = [
+    "span._2WkVRV",
+    "a._2whKao",
+    ".G6XhRU",
+]
+
+FLIPKART_PRICE_SELECTORS = [
+    "div._30jeq3",
+    "div._16Jk6d",
+    "._25b18c ._30jeq3",
+    "div.Nx9bqj",
+    ".CEmiEU div",
+]
+
+FLIPKART_RATING_SELECTORS = [
+    "div._3LWZlK",
+    "div._2d4LTz",
+    "span._1lRcqv div._3LWZlK",
+]
+
+# -------------------------------------------------
 # PAGE CONFIG
 # -------------------------------------------------
 st.set_page_config(
@@ -1263,79 +1336,6 @@ def create_manual_product_data(platform, title, brand, price, rating, category, 
         "images": images,
         "input_method": "manual"
     }
-
-# -------------------------------------------------
-# SELECTOR PATTERNS
-# -------------------------------------------------
-# Amazon Selectors
-AMAZON_TITLE_SELECTORS = [
-    "#productTitle",
-    "#title span",
-    "h1.a-size-large",
-    "span#productTitle",
-    "#ebooksProductTitle",
-]
-
-AMAZON_BRAND_SELECTORS = [
-    "#bylineInfo",
-    "a#bylineInfo",
-    ".po-brand .po-break-word",
-    "tr.po-brand td.a-span9 span",
-    "#brand",
-]
-
-AMAZON_PRICE_SELECTORS = [
-    "span.a-price-whole",
-    "#priceblock_ourprice",
-    "#priceblock_dealprice",
-    "span.a-offscreen",
-    "#corePrice_feature_div span.a-offscreen",
-    "#corePriceDisplay_desktop_feature_div span.a-offscreen",
-    ".a-price .a-offscreen",
-]
-
-AMAZON_RATING_SELECTORS = [
-    "span.a-icon-alt",
-    "#acrPopover span.a-icon-alt",
-    "i.a-icon-star span.a-icon-alt",
-]
-
-AMAZON_REVIEW_COUNT_SELECTORS = [
-    "#acrCustomerReviewText",
-    "#acrCustomerReviewLink span",
-    "span[data-hook='total-review-count']",
-]
-
-# Flipkart Selectors
-FLIPKART_TITLE_SELECTORS = [
-    "span.B_NuCI",
-    "span.VU-ZEz",
-    "h1.yhB1nd span",
-    "h1._6EBuvT span",
-    ".C7fEHH h1 span",
-    "h1 span.B_NuCI",
-    "._35KyD6",
-]
-
-FLIPKART_BRAND_SELECTORS = [
-    "span._2WkVRV",
-    "a._2whKao",
-    ".G6XhRU",
-]
-
-FLIPKART_PRICE_SELECTORS = [
-    "div._30jeq3",
-    "div._16Jk6d",
-    "._25b18c ._30jeq3",
-    "div.Nx9bqj",
-    ".CEmiEU div",
-]
-
-FLIPKART_RATING_SELECTORS = [
-    "div._3LWZlK",
-    "div._2d4LTz",
-    "span._1lRcqv div._3LWZlK",
-]
 
 # -------------------------------------------------
 # COMPLIANCE CONSTANTS
