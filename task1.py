@@ -13,6 +13,105 @@ from openai import OpenAI
 from urllib.parse import urljoin, urlparse, unquote
 
 # -------------------------------------------------
+# CONFIGURATION CONSTANTS
+# -------------------------------------------------
+# API Configuration
+OPENAI_MODEL = "gpt-4o"
+OPENAI_IMAGE_MODEL = "gpt-image-1"
+DEFAULT_TEMPERATURE = 0.2
+DEFAULT_IMAGE_TEMPERATURE = 0.1
+MAX_ANALYSIS_TOKENS = 8000
+MAX_BRIEF_TOKENS = 6000
+
+# Image Configuration
+IMAGE_SIZE = "1024x1024"
+MAX_IMAGES_TO_EXTRACT = 10
+MAX_REVIEWS_TO_EXTRACT = 8
+
+# Scraper Configuration
+SCRAPER_TIMEOUT = 35
+SCRAPER_MAX_RETRIES = 3
+SCRAPER_MIN_DELAY = 2
+SCRAPER_MAX_DELAY = 7
+
+# Background Colors
+AMAZON_BG_COLOR = "RGB(255,255,255)"
+PRODUCT_FRAME_SIZE = 85  # percentage
+
+# -------------------------------------------------
+# SELECTOR PATTERNS
+# -------------------------------------------------
+# Amazon Selectors
+AMAZON_TITLE_SELECTORS = [
+    "#productTitle",
+    "#title span",
+    "h1.a-size-large",
+    "span#productTitle",
+    "#ebooksProductTitle",
+]
+
+AMAZON_BRAND_SELECTORS = [
+    "#bylineInfo",
+    "a#bylineInfo",
+    ".po-brand .po-break-word",
+    "tr.po-brand td.a-span9 span",
+    "#brand",
+]
+
+AMAZON_PRICE_SELECTORS = [
+    "span.a-price-whole",
+    "#priceblock_ourprice",
+    "#priceblock_dealprice",
+    "span.a-offscreen",
+    "#corePrice_feature_div span.a-offscreen",
+    "#corePriceDisplay_desktop_feature_div span.a-offscreen",
+    ".a-price .a-offscreen",
+]
+
+AMAZON_RATING_SELECTORS = [
+    "span.a-icon-alt",
+    "#acrPopover span.a-icon-alt",
+    "i.a-icon-star span.a-icon-alt",
+]
+
+AMAZON_REVIEW_COUNT_SELECTORS = [
+    "#acrCustomerReviewText",
+    "#acrCustomerReviewLink span",
+    "span[data-hook='total-review-count']",
+]
+
+# Flipkart Selectors
+FLIPKART_TITLE_SELECTORS = [
+    "span.B_NuCI",
+    "span.VU-ZEz",
+    "h1.yhB1nd span",
+    "h1._6EBuvT span",
+    ".C7fEHH h1 span",
+    "h1 span.B_NuCI",
+    "._35KyD6",
+]
+
+FLIPKART_BRAND_SELECTORS = [
+    "span._2WkVRV",
+    "a._2whKao",
+    ".G6XhRU",
+]
+
+FLIPKART_PRICE_SELECTORS = [
+    "div._30jeq3",
+    "div._16Jk6d",
+    "._25b18c ._30jeq3",
+    "div.Nx9bqj",
+    ".CEmiEU div",
+]
+
+FLIPKART_RATING_SELECTORS = [
+    "div._3LWZlK",
+    "div._2d4LTz",
+    "span._1lRcqv div._3LWZlK",
+]
+
+# -------------------------------------------------
 # PAGE CONFIG
 # -------------------------------------------------
 st.set_page_config(
@@ -25,7 +124,7 @@ st.set_page_config(
 # -------------------------------------------------
 # CUSTOM CSS FOR PROFESSIONAL UI
 # -------------------------------------------------
-st.markdown("""
+CUSTOM_CSS = """
 <style>
     /* Main app styling */
     .main {
@@ -245,7 +344,9 @@ st.markdown("""
         color: white;
     }
 </style>
-""", unsafe_allow_html=True)
+"""
+
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # -------------------------------------------------
 # APP HEADER
@@ -274,16 +375,20 @@ st.markdown("""
 # -------------------------------------------------
 # SESSION STATE INITIALIZATION
 # -------------------------------------------------
-if 'product' not in st.session_state:
-    st.session_state.product = None
-if 'ai_response' not in st.session_state:
-    st.session_state.ai_response = None
-if 'image_brief' not in st.session_state:
-    st.session_state.image_brief = None
-if 'generated_images' not in st.session_state:
-    st.session_state.generated_images = {}
-if 'analysis_done' not in st.session_state:
-    st.session_state.analysis_done = False
+def initialize_session_state():
+    """Initialize session state variables with default values."""
+    defaults = {
+        'product': None,
+        'ai_response': None,
+        'image_brief': None,
+        'generated_images': {},
+        'analysis_done': False
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+initialize_session_state()
 
 # -------------------------------------------------
 # API KEY INPUT
@@ -376,7 +481,11 @@ analyze_btn = st.button("🎯 Generate Image Strategy", key="analyze_btn")
 # -------------------------------------------------
 
 def create_scraper_with_headers():
-    """Create scraper with rotating user agents and realistic headers"""
+    """Create scraper with rotating user agents and realistic headers.
+    
+    Returns:
+        cloudscraper.CloudScraper: Configured scraper instance with random user agent
+    """
     user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -420,7 +529,11 @@ def create_scraper_with_headers():
     return scraper
 
 def create_simple_session():
-    """Create a simple requests session as fallback"""
+    """Create a simple requests session as fallback.
+    
+    Returns:
+        requests.Session: Configured session with basic headers
+    """
     session = requests.Session()
     session.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -432,7 +545,16 @@ def create_simple_session():
     return session
 
 def extract_with_fallbacks(soup, selectors, extract_type="text"):
-    """Try multiple selectors and return first successful match"""
+    """Try multiple selectors and return first successful match.
+    
+    Args:
+        soup: BeautifulSoup object to search in
+        selectors: List of CSS selectors to try
+        extract_type: Type of extraction - "text", "html", or "src"
+        
+    Returns:
+        Extracted content or None if no match found
+    """
     for selector in selectors:
         try:
             element = soup.select_one(selector)
@@ -448,7 +570,17 @@ def extract_with_fallbacks(soup, selectors, extract_type="text"):
     return None
 
 def extract_all_with_fallbacks(soup, selectors, extract_type="text", limit=None):
-    """Try multiple selectors and return all matches from first successful selector"""
+    """Try multiple selectors and return all matches from first successful selector.
+    
+    Args:
+        soup: BeautifulSoup object to search in
+        selectors: List of CSS selectors to try
+        extract_type: Type of extraction - "text" or "src"
+        limit: Maximum number of results to return (None for all)
+        
+    Returns:
+        List of extracted content
+    """
     for selector in selectors:
         try:
             elements = soup.select(selector)
@@ -470,7 +602,14 @@ def extract_all_with_fallbacks(soup, selectors, extract_type="text", limit=None)
     return []
 
 def clean_text(text):
-    """Clean and normalize extracted text"""
+    """Clean and normalize extracted text.
+    
+    Args:
+        text: Raw text to clean
+        
+    Returns:
+        Cleaned and normalized text string
+    """
     if not text:
         return ""
     # Remove extra whitespace
@@ -571,7 +710,7 @@ def extract_amazon_images(soup, url):
             seen.add(img)
             unique_images.append(img)
     
-    return unique_images[:10]  # Limit to 10 images
+    return unique_images[:MAX_IMAGES_TO_EXTRACT]  # Limit to configured max
 
 def convert_amazon_to_hires(url):
     """Convert Amazon image URL to highest resolution version"""
@@ -679,10 +818,18 @@ def extract_flipkart_images(soup, url):
             seen.add(img)
             unique_images.append(img)
     
-    return unique_images[:10]
+    return unique_images[:MAX_IMAGES_TO_EXTRACT]
 
 def scrape_amazon(soup, url):
-    """Comprehensive Amazon scraper with multiple fallback selectors"""
+    """Comprehensive Amazon scraper with multiple fallback selectors.
+    
+    Args:
+        soup: BeautifulSoup object of the page
+        url: Product URL
+        
+    Returns:
+        Dictionary containing scraped Amazon product data
+    """
     data = {
         "platform": "Amazon",
         "url": url,
@@ -701,55 +848,22 @@ def scrape_amazon(soup, url):
     }
     
     # Title - multiple selectors
-    title_selectors = [
-        "#productTitle",
-        "#title span",
-        "h1.a-size-large",
-        "span#productTitle",
-        "#ebooksProductTitle",
-    ]
-    data["title"] = extract_with_fallbacks(soup, title_selectors) or "NOT_FOUND"
+    data["title"] = extract_with_fallbacks(soup, AMAZON_TITLE_SELECTORS) or "NOT_FOUND"
     
     # Brand
-    brand_selectors = [
-        "#bylineInfo",
-        "a#bylineInfo",
-        ".po-brand .po-break-word",
-        "tr.po-brand td.a-span9 span",
-        "#brand",
-    ]
-    data["brand"] = extract_with_fallbacks(soup, brand_selectors) or "NOT_FOUND"
+    data["brand"] = extract_with_fallbacks(soup, AMAZON_BRAND_SELECTORS) or "NOT_FOUND"
     
     # Price
-    price_selectors = [
-        "span.a-price-whole",
-        "#priceblock_ourprice",
-        "#priceblock_dealprice",
-        "span.a-offscreen",
-        "#corePrice_feature_div span.a-offscreen",
-        "#corePriceDisplay_desktop_feature_div span.a-offscreen",
-        ".a-price .a-offscreen",
-    ]
-    data["price"] = extract_with_fallbacks(soup, price_selectors) or "NOT_FOUND"
+    data["price"] = extract_with_fallbacks(soup, AMAZON_PRICE_SELECTORS) or "NOT_FOUND"
     
     # Rating
-    rating_selectors = [
-        "span.a-icon-alt",
-        "#acrPopover span.a-icon-alt",
-        "i.a-icon-star span.a-icon-alt",
-    ]
-    rating_text = extract_with_fallbacks(soup, rating_selectors)
+    rating_text = extract_with_fallbacks(soup, AMAZON_RATING_SELECTORS)
     if rating_text:
         match = re.search(r'([\d.]+)', rating_text)
         data["rating"] = match.group(1) if match else rating_text
     
     # Review count
-    review_count_selectors = [
-        "#acrCustomerReviewText",
-        "#acrCustomerReviewLink span",
-        "span[data-hook='total-review-count']",
-    ]
-    data["review_count"] = extract_with_fallbacks(soup, review_count_selectors) or "NOT_FOUND"
+    data["review_count"] = extract_with_fallbacks(soup, AMAZON_REVIEW_COUNT_SELECTORS) or "NOT_FOUND"
     
     # Bullet points / Feature bullets
     bullet_selectors = [
@@ -817,7 +931,7 @@ def scrape_amazon(soup, url):
         "div.review-text-content span",
         "#cm-cr-dp-review-list div.review span.review-text",
     ]
-    reviews = extract_all_with_fallbacks(soup, review_selectors, limit=8)
+    reviews = extract_all_with_fallbacks(soup, review_selectors, limit=MAX_REVIEWS_TO_EXTRACT)
     data["reviews"] = [clean_text(r)[:500] for r in reviews if len(r) > 20]
     
     # Review titles
@@ -825,7 +939,7 @@ def scrape_amazon(soup, url):
         "a[data-hook='review-title'] span:not(.a-icon-alt)",
         "span[data-hook='review-title'] span",
     ]
-    review_titles = extract_all_with_fallbacks(soup, review_title_selectors, limit=8)
+    review_titles = extract_all_with_fallbacks(soup, review_title_selectors, limit=MAX_REVIEWS_TO_EXTRACT)
     if review_titles:
         data["review_titles"] = [clean_text(t) for t in review_titles]
     
@@ -845,7 +959,15 @@ def scrape_amazon(soup, url):
     return data
 
 def scrape_flipkart(soup, url):
-    """Comprehensive Flipkart scraper with multiple fallback selectors"""
+    """Comprehensive Flipkart scraper with multiple fallback selectors.
+    
+    Args:
+        soup: BeautifulSoup object of the page
+        url: Product URL
+        
+    Returns:
+        Dictionary containing scraped Flipkart product data
+    """
     data = {
         "platform": "Flipkart",
         "url": url,
@@ -865,42 +987,16 @@ def scrape_flipkart(soup, url):
     }
     
     # Title - multiple selectors (Flipkart changes classes frequently)
-    title_selectors = [
-        "span.B_NuCI",
-        "span.VU-ZEz",
-        "h1.yhB1nd span",
-        "h1._6EBuvT span",
-        ".C7fEHH h1 span",
-        "h1 span.B_NuCI",
-        "._35KyD6",
-    ]
-    data["title"] = extract_with_fallbacks(soup, title_selectors) or "NOT_FOUND"
+    data["title"] = extract_with_fallbacks(soup, FLIPKART_TITLE_SELECTORS) or "NOT_FOUND"
     
     # Brand
-    brand_selectors = [
-        "span._2WkVRV",
-        "a._2whKao",
-        ".G6XhRU",
-    ]
-    data["brand"] = extract_with_fallbacks(soup, brand_selectors) or "NOT_FOUND"
+    data["brand"] = extract_with_fallbacks(soup, FLIPKART_BRAND_SELECTORS) or "NOT_FOUND"
     
     # Price
-    price_selectors = [
-        "div._30jeq3",
-        "div._16Jk6d",
-        "._25b18c ._30jeq3",
-        "div.Nx9bqj",
-        ".CEmiEU div",
-    ]
-    data["price"] = extract_with_fallbacks(soup, price_selectors) or "NOT_FOUND"
+    data["price"] = extract_with_fallbacks(soup, FLIPKART_PRICE_SELECTORS) or "NOT_FOUND"
     
     # Rating
-    rating_selectors = [
-        "div._3LWZlK",
-        "div._2d4LTz",
-        "span._1lRcqv div._3LWZlK",
-    ]
-    data["rating"] = extract_with_fallbacks(soup, rating_selectors) or "NOT_FOUND"
+    data["rating"] = extract_with_fallbacks(soup, FLIPKART_RATING_SELECTORS) or "NOT_FOUND"
     
     # Review count
     review_selectors = [
@@ -966,7 +1062,7 @@ def scrape_flipkart(soup, url):
         "p._2-N8zT",
         "div.ZmyHeo div",
     ]
-    reviews = extract_all_with_fallbacks(soup, review_body_selectors, limit=8)
+    reviews = extract_all_with_fallbacks(soup, review_body_selectors, limit=MAX_REVIEWS_TO_EXTRACT)
     data["reviews"] = [clean_text(r)[:500] for r in reviews if len(r) > 20]
     
     # Review titles
@@ -974,7 +1070,7 @@ def scrape_flipkart(soup, url):
         "p._2-N8zT",
         "p._2sc7ZR",
     ]
-    review_titles = extract_all_with_fallbacks(soup, review_title_selectors, limit=8)
+    review_titles = extract_all_with_fallbacks(soup, review_title_selectors, limit=MAX_REVIEWS_TO_EXTRACT)
     if review_titles:
         data["review_titles"] = [clean_text(t) for t in review_titles]
     
@@ -1001,8 +1097,63 @@ def scrape_flipkart(soup, url):
     
     return data
 
-def scrape_product(url: str, max_retries: int = 3) -> dict:
-    """Main scraping function with retry logic and comprehensive extraction"""
+def detect_platform(url: str) -> str:
+    """Detect e-commerce platform from URL.
+    
+    Args:
+        url: Product URL
+        
+    Returns:
+        Platform name: 'Amazon', 'Flipkart', or 'Unknown'
+    """
+    url_lower = url.lower()
+    if "amazon" in url_lower:
+        return "Amazon"
+    elif "flipkart" in url_lower:
+        return "Flipkart"
+    return "Unknown"
+
+def check_anti_bot_response(response_text: str) -> str:
+    """Check if response contains anti-bot indicators.
+    
+    Args:
+        response_text: HTML response text
+        
+    Returns:
+        Error message if anti-bot detected, None otherwise
+    """
+    page_lower = response_text.lower()
+    if "captcha" in page_lower and "enter the characters" in page_lower:
+        return "CAPTCHA detected"
+    if "automated access" in page_lower:
+        return "Automated access blocked"
+    if "api-services-support@amazon.com" in page_lower:
+        return "Amazon bot detection"
+    return None
+
+def is_valid_product_data(data: dict) -> bool:
+    """Check if scraped data contains valid product information.
+    
+    Args:
+        data: Product data dictionary
+        
+    Returns:
+        True if data is valid, False otherwise
+    """
+    has_title = data.get("title") not in ["NOT_FOUND", "", None]
+    has_bullets = data.get("bullets") and len(data["bullets"]) > 0
+    return has_title or has_bullets
+
+def scrape_product(url: str, max_retries: int = SCRAPER_MAX_RETRIES) -> dict:
+    """Main scraping function with retry logic and comprehensive extraction.
+    
+    Args:
+        url: Product URL to scrape
+        max_retries: Maximum number of retry attempts
+        
+    Returns:
+        Dictionary containing scraped product data
+    """
     
     last_error = None
     methods_tried = []
@@ -1020,37 +1171,35 @@ def scrape_product(url: str, max_retries: int = 3) -> dict:
             
             # Add delay between retries
             if attempt > 0:
-                time.sleep(random.uniform(3, 7))
+                time.sleep(random.uniform(SCRAPER_MIN_DELAY + 1, SCRAPER_MAX_DELAY))
             
             # First visit homepage to get cookies
-            if "amazon" in url.lower():
+            platform = detect_platform(url)
+            if platform == "Amazon":
                 try:
                     scraper.get("https://www.amazon.in/", timeout=10)
                     time.sleep(random.uniform(1, 2))
                 except:
                     pass
             
-            res = scraper.get(url, timeout=35)
+            res = scraper.get(url, timeout=SCRAPER_TIMEOUT)
             
             # Check for anti-bot pages
             if res.status_code != 200:
                 raise Exception(f"HTTP {res.status_code}")
             
-            # More lenient anti-bot check
-            page_lower = res.text.lower()
-            if "captcha" in page_lower and "enter the characters" in page_lower:
-                raise Exception("CAPTCHA detected")
-            if "automated access" in page_lower:
-                raise Exception("Automated access blocked")
-            if "api-services-support@amazon.com" in page_lower:
-                raise Exception("Amazon bot detection")
+            # Check anti-bot response
+            anti_bot_error = check_anti_bot_response(res.text)
+            if anti_bot_error:
+                raise Exception(anti_bot_error)
             
             soup = BeautifulSoup(res.text, "lxml")
             
             # Detect platform and scrape accordingly
-            if "amazon" in url.lower():
+            platform = detect_platform(url)
+            if platform == "Amazon":
                 data = scrape_amazon(soup, url)
-            elif "flipkart" in url.lower():
+            elif platform == "Flipkart":
                 data = scrape_flipkart(soup, url)
             else:
                 # Generic fallback
@@ -1064,10 +1213,7 @@ def scrape_product(url: str, max_retries: int = 3) -> dict:
                 }
             
             # Validate we got meaningful data
-            if data["title"] not in ["NOT_FOUND", "", None]:
-                return data
-            
-            if data.get("bullets") and len(data["bullets"]) > 0:
+            if is_valid_product_data(data):
                 return data
                 
             raise Exception("Failed to extract product data - page structure may have changed")
@@ -1080,16 +1226,17 @@ def scrape_product(url: str, max_retries: int = 3) -> dict:
     try:
         methods_tried.append("Simple requests session")
         session = create_simple_session()
-        time.sleep(random.uniform(2, 4))
+        time.sleep(random.uniform(SCRAPER_MIN_DELAY, SCRAPER_MIN_DELAY + 2))
         
         res = session.get(url, timeout=30)
         
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, "lxml")
             
-            if "amazon" in url.lower():
+            platform = detect_platform(url)
+            if platform == "Amazon":
                 data = scrape_amazon(soup, url)
-            elif "flipkart" in url.lower():
+            elif platform == "Flipkart":
                 data = scrape_flipkart(soup, url)
             else:
                 data = {
@@ -1101,15 +1248,16 @@ def scrape_product(url: str, max_retries: int = 3) -> dict:
                     "reviews": [],
                 }
             
-            if data["title"] not in ["NOT_FOUND", "", None]:
+            if is_valid_product_data(data):
                 return data
                 
     except Exception as e:
         last_error = str(e)
     
     # Return error data if all methods failed
+    platform = detect_platform(url)
     return {
-        "platform": "Amazon" if "amazon" in url.lower() else "Flipkart" if "flipkart" in url.lower() else "Unknown",
+        "platform": platform,
         "url": url,
         "title": "SCRAPING_FAILED",
         "description": f"Failed after multiple attempts. Error: {last_error}",
@@ -1122,7 +1270,24 @@ def scrape_product(url: str, max_retries: int = 3) -> dict:
     }
 
 def create_manual_product_data(platform, title, brand, price, rating, category, bullets_text, description, whats_in_box, reviews_text, image_urls_text):
-    """Create product data structure from manual input"""
+    """Create product data structure from manual input.
+    
+    Args:
+        platform: Platform name (Amazon/Flipkart/Both)
+        title: Product title
+        brand: Brand name
+        price: Product price
+        rating: Product rating
+        category: Product category
+        bullets_text: Bullet points as text (one per line)
+        description: Product description
+        whats_in_box: Contents/what's in the box
+        reviews_text: Customer reviews as text
+        image_urls_text: Image URLs as text (one per line)
+        
+    Returns:
+        Dictionary containing structured product data
+    """
     
     # Parse bullets
     bullets = []
@@ -1173,9 +1338,31 @@ def create_manual_product_data(platform, title, brand, price, rating, category, 
     }
 
 # -------------------------------------------------
+# COMPLIANCE CONSTANTS
+# -------------------------------------------------
+AMAZON_IMAGE_COMPLIANCE = (
+    f"Amazon main image: pure white background ({AMAZON_BG_COLOR}), "
+    f"product fills ~{PRODUCT_FRAME_SIZE}% of frame, no text/logos/graphics/borders/watermarks; "
+    "show the actual product and all included pieces proportionally; don't crop product."
+)
+
+FLIPKART_QC_GUIDANCE = (
+    "Flipkart: follow QC-safe rules: minimum resolution guidance; white/light background for main image; "
+    "avoid price tags/stickers/celebrity edits; avoid text/watermarks if QC rules require it for the category."
+)
+
+# -------------------------------------------------
 # IMAGE-FOCUSED SEO PROMPT (VERY DEFINED)
 # -------------------------------------------------
 def image_seo_prompt(product: dict) -> str:
+    """Generate comprehensive image SEO analysis prompt.
+    
+    Args:
+        product: Dictionary containing product data
+        
+    Returns:
+        Formatted prompt string for AI analysis
+    """
     # Format bullets/highlights
     bullets_text = "\n".join([f"  • {b}" for b in product.get('bullets', [])]) or "NOT_FOUND"
     
@@ -1202,8 +1389,9 @@ Your job is NOT to rewrite the title/description (another model does that). Your
 (D) produce structured "fix prompts" that can be sent directly to an image generation engine (or designer) to create improved images.
 
 MARKETPLACE COMPLIANCE (must check):
-- Amazon main image: pure white background (RGB 255,255,255), product fills ~85% of frame, no text/logos/graphics/borders/watermarks; show the actual product and all included pieces proportionally; don't crop product. (Use this as a hard constraint.) 
-- Flipkart: follow QC-safe rules: minimum resolution guidance; white/light background for main image; avoid price tags/stickers/celebrity edits; avoid text/watermarks if QC rules require it for the category. If there's a conflict between "better marketing" and "QC risk", prefer QC-safe and call out the tradeoff.
+- {AMAZON_IMAGE_COMPLIANCE}
+- {FLIPKART_QC_GUIDANCE}
+If there's a conflict between "better marketing" and "QC risk", prefer QC-safe and call out the tradeoff.
 
 ================================================================================
 SCRAPED PRODUCT DATA
@@ -1329,7 +1517,14 @@ Important:
 # IMAGE BRIEF PACK PROMPT (FOR STRUCTURED JSON OUTPUT)
 # -------------------------------------------------
 def image_brief_prompt(product: dict) -> str:
-    """Generate the prompt for creating IMAGE_BRIEF_PACK JSON"""
+    """Generate the prompt for creating IMAGE_BRIEF_PACK JSON.
+    
+    Args:
+        product: Dictionary containing product data
+        
+    Returns:
+        Formatted prompt string for generating structured image brief
+    """
     
     # Format bullets/highlights
     bullets_text = "\n".join([f"  • {b}" for b in product.get('bullets', [])]) or "NOT_FOUND"
@@ -1375,8 +1570,8 @@ TASK:
 5) Output a single JSON called IMAGE_BRIEF_PACK.
 
 COMPLIANCE RULES:
-- Amazon Image 1: white background, no text/graphics/watermarks, product ~85% frame, accurate contents depiction.
-- Flipkart: QC-safe first; if text overlays might be restricted, mark them "optional" and provide a no-text plan.
+- {AMAZON_IMAGE_COMPLIANCE}
+- {FLIPKART_QC_GUIDANCE}
 
 OUTPUT FORMAT (ONLY JSON, nothing else):
 {{
@@ -1443,7 +1638,16 @@ IMPORTANT:
 # IMAGE GENERATION PROMPT BUILDER
 # -------------------------------------------------
 def build_image_gen_prompt(brief: dict, image_type: str, platform: str = "amazon") -> str:
-    """Build a detailed image generation prompt from the brief"""
+    """Build a detailed image generation prompt from the brief.
+    
+    Args:
+        brief: Dictionary containing image brief data
+        image_type: Type of image to generate (hero, contents, benefits, etc.)
+        platform: Target platform (amazon or flipkart)
+        
+    Returns:
+        Detailed prompt string for image generation
+    """
     
     product_summary = brief.get("product_summary", {})
     included_items = brief.get("included_items", [])
@@ -1491,8 +1695,8 @@ Type: {product_type}
 Target: {target} preparing for {exam}
 
 REQUIREMENTS:
-- Pure white background (RGB 255, 255, 255)
-- Product fills approximately 85% of the frame
+- Pure white background ({AMAZON_BG_COLOR})
+- Product fills approximately {PRODUCT_FRAME_SIZE}% of the frame
 - 45-degree angle shot showing depth and dimension
 - All included items visible: {items_list}
 - Items arranged proportionally by actual size
@@ -1510,7 +1714,7 @@ MUST AVOID:
 - Harsh shadows or reflections
 
 STYLE: Clean, professional, trustworthy, premium educational product
-OUTPUT: Square format (1024x1024), Amazon/Flipkart marketplace ready""",
+OUTPUT: Square format ({IMAGE_SIZE}), Amazon/Flipkart marketplace ready""",
 
         "contents": f"""Flat-lay product contents photography for eCommerce.
 
@@ -1531,7 +1735,7 @@ LIGHTING: Even, shadow-free overhead lighting
 STYLE: Clean, organized, informative, reveals full value
 {"Text overlay allowed for labels" if platform == "amazon" else "Prefer no text for Flipkart QC safety"}
 
-OUTPUT: Square format (1024x1024), high resolution""",
+OUTPUT: Square format ({IMAGE_SIZE}), high resolution""",
 
         "benefits": f"""Educational product benefits infographic for eCommerce.
 
@@ -1553,7 +1757,7 @@ TYPOGRAPHY: If text needed - clean sans-serif, high contrast
 
 {"Secondary image - text overlays allowed" if platform == "amazon" else "Flipkart: Prefer visual icons over text for QC safety"}
 
-OUTPUT: Square format (1024x1024)""",
+OUTPUT: Square format ({IMAGE_SIZE})""",
 
         "usage": f"""Step-by-step usage guide image for educational product.
 
@@ -1574,7 +1778,7 @@ COMPOSITION:
 BACKGROUND: Neutral, contextual study environment elements
 STYLE: Instructional, clear, approachable
 
-OUTPUT: Square format (1024x1024)""",
+OUTPUT: Square format ({IMAGE_SIZE})""",
 
         "detail": f"""Close-up detail shot for educational product quality.
 
@@ -1598,7 +1802,7 @@ LIGHTING: Detailed lighting showing textures
 
 STYLE: Quality-focused, builds trust, shows premium feel
 
-OUTPUT: Square format (1024x1024)""",
+OUTPUT: Square format ({IMAGE_SIZE})""",
 
         "lifestyle": f"""Lifestyle/contextual image for educational product.
 
@@ -1625,7 +1829,7 @@ AVOID:
 
 STYLE: Aspirational but relatable, authentic Indian context
 
-OUTPUT: Square format (1024x1024)""",
+OUTPUT: Square format ({IMAGE_SIZE})""",
 
         "trust": f"""Trust and credibility image for educational product.
 
@@ -1648,7 +1852,7 @@ STYLE: Corporate trust, social proof, credibility
 
 NOTE: Do not invent any claims, certifications, or numbers not in the listing.
 
-OUTPUT: Square format (1024x1024)"""
+OUTPUT: Square format ({IMAGE_SIZE})"""
     }
     
     return prompts.get(image_type, prompts["hero"])
@@ -1675,6 +1879,18 @@ high realism, Amazon-ready, no text overlays.
 # SELF-HEALING JSON PARSER
 # -------------------------------------------------
 def safe_json_from_ai(raw_text: str, client: OpenAI) -> dict:
+    """Parse JSON from AI response with self-healing capability.
+    
+    Args:
+        raw_text: Raw text response from AI
+        client: OpenAI client instance
+        
+    Returns:
+        Parsed JSON dictionary
+        
+    Raises:
+        ValueError: If raw_text is empty
+    """
     if not raw_text or not raw_text.strip():
         raise ValueError("Empty AI response")
 
@@ -1689,7 +1905,7 @@ CONTENT:
 {raw_text}
 """
         repair_resp = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[{"role": "user", "content": repair_prompt}],
             temperature=0
         )
@@ -1755,20 +1971,20 @@ if analyze_btn:
     # Generate AI Analysis
     with st.spinner("🧠 Generating Image Strategy Analysis..."):
         resp = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[{"role": "user", "content": image_seo_prompt(st.session_state.product)}],
-            temperature=0.2,
-            max_tokens=8000
+            temperature=DEFAULT_TEMPERATURE,
+            max_tokens=MAX_ANALYSIS_TOKENS
         )
         st.session_state.ai_response = resp.choices[0].message.content
 
     # Generate Image Brief Pack
     with st.spinner("📋 Generating Image Brief Pack..."):
         brief_resp = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[{"role": "user", "content": image_brief_prompt(st.session_state.product)}],
-            temperature=0.1,
-            max_tokens=6000
+            temperature=DEFAULT_IMAGE_TEMPERATURE,
+            max_tokens=MAX_BRIEF_TOKENS
         )
         brief_raw = brief_resp.choices[0].message.content
         
@@ -1881,8 +2097,9 @@ if st.session_state.analysis_done and st.session_state.product:
                 with cols[idx % 4]:
                     try:
                         st.image(img_url, caption=f"Image {idx+1}", use_container_width=True)
-                    except:
-                        st.markdown(f"[Image {idx+1}]({img_url})")
+                    except Exception:
+                        st.warning(f"⚠️ Image {idx+1} failed to load")
+                        st.markdown(f"[View Image {idx+1}]({img_url})")
             
             # Show image URLs for reference
             st.markdown("**🔗 Full Resolution Image URLs:**")
@@ -2020,9 +2237,9 @@ if st.session_state.analysis_done and st.session_state.product:
                             
                             # Generate image
                             img_response = client.images.generate(
-                                model="gpt-image-1",
+                                model=OPENAI_IMAGE_MODEL,
                                 prompt=img_prompt,
-                                size="1024x1024",
+                                size=IMAGE_SIZE,
                                 n=1
                             )
                             
@@ -2039,35 +2256,39 @@ if st.session_state.analysis_done and st.session_state.product:
                                     img_bytes = response.read()
                             
                             if img_bytes:
-                                image = Image.open(BytesIO(img_bytes))
-                                
-                                # Display the image
-                                st.image(image, caption=f"{gen_platform} - {image_types[img_type]}", use_container_width=True)
-                                
-                                # Store in session state
-                                st.session_state.generated_images[f"{gen_platform}_{img_type}"] = img_bytes
-                                
-                                # Download button
-                                st.download_button(
-                                    label=f"📥 Download {img_type.capitalize()} Image",
-                                    data=img_bytes,
-                                    file_name=f"{gen_platform.lower()}_{img_type}_image.png",
-                                    mime="image/png",
-                                    key=f"dl_{gen_platform}_{img_type}_{time.time()}"
-                                )
-                                
-                                # Show the prompt used
-                                with st.expander(f"🔧 Prompt used for {img_type}"):
-                                    st.code(img_prompt)
+                                try:
+                                    image = Image.open(BytesIO(img_bytes))
+                                    
+                                    # Display the image
+                                    st.image(image, caption=f"{gen_platform} - {image_types[img_type]}", use_container_width=True)
+                                    
+                                    # Store in session state
+                                    st.session_state.generated_images[f"{gen_platform}_{img_type}"] = img_bytes
+                                    
+                                    # Download button
+                                    st.download_button(
+                                        label=f"📥 Download {img_type.capitalize()} Image",
+                                        data=img_bytes,
+                                        file_name=f"{gen_platform.lower()}_{img_type}_image.png",
+                                        mime="image/png",
+                                        key=f"dl_{gen_platform}_{img_type}_{time.time()}"
+                                    )
+                                    
+                                    # Show the prompt used
+                                    with st.expander(f"🔧 Prompt used for {img_type}"):
+                                        st.code(img_prompt)
+                                except Exception as img_error:
+                                    st.error(f"❌ Failed to process image data for {img_type}: {str(img_error)}")
                             else:
-                                st.error(f"No image data returned for {img_type}")
+                                st.error(f"❌ No image data returned for {img_type}")
                             
                             st.markdown("---")
                             
                         except Exception as e:
-                            st.error(f"Failed to generate {img_type}: {str(e)}")
-                            with st.expander("Error details"):
+                            st.error(f"❌ Failed to generate {img_type}: {str(e)}")
+                            with st.expander("🔍 Error details"):
                                 st.code(str(e))
+                                st.caption("This error may be temporary. Try again or select a different image type.")
                 
                 st.success(f"✅ Image generation complete! All {len(selected_images)} images generated successfully.")
                 st.balloons()
@@ -2083,16 +2304,19 @@ if st.session_state.analysis_done and st.session_state.product:
             
             for idx, key in enumerate(img_keys):
                 with cols[idx % 3]:
-                    img_bytes = st.session_state.generated_images[key]
-                    image = Image.open(BytesIO(img_bytes))
-                    st.image(image, caption=key.replace("_", " ").title(), use_container_width=True)
-                    st.download_button(
-                        label=f"📥 Download",
-                        data=img_bytes,
-                        file_name=f"{key}.png",
-                        mime="image/png",
-                        key=f"dl_prev_{key}"
-                    )
+                    try:
+                        img_bytes = st.session_state.generated_images[key]
+                        image = Image.open(BytesIO(img_bytes))
+                        st.image(image, caption=key.replace("_", " ").title(), use_container_width=True)
+                        st.download_button(
+                            label=f"📥 Download",
+                            data=img_bytes,
+                            file_name=f"{key}.png",
+                            mime="image/png",
+                            key=f"dl_prev_{key}"
+                        )
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not display {key}: {str(e)}")
     
     else:
         st.warning("⚠️ Could not generate Image Brief. You can still use the analysis above for manual image creation.")
