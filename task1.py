@@ -200,6 +200,168 @@ st.markdown("""
         border-radius: 10px;
     }
     
+    /* Image Scorecard Styles */
+    .scorecard-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 1.5rem;
+        padding: 1rem 0;
+    }
+    
+    .image-scorecard {
+        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border: 1px solid #e9ecef;
+    }
+    
+    .image-scorecard:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    }
+    
+    .scorecard-image-wrap {
+        position: relative;
+        width: 100%;
+        height: 200px;
+        overflow: hidden;
+        background: #f0f0f0;
+    }
+    
+    .scorecard-image-wrap img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .scorecard-badge {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    
+    .scorecard-score {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: white;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    
+    .score-high { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+    .score-medium { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .score-low { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); }
+    
+    .scorecard-body {
+        padding: 1.25rem;
+    }
+    
+    .scorecard-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #1e3c72;
+        margin-bottom: 0.75rem;
+        line-height: 1.4;
+    }
+    
+    .scorecard-summary {
+        font-size: 0.8rem;
+        color: #495057;
+        line-height: 1.5;
+        margin-bottom: 1rem;
+    }
+    
+    .scorecard-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 1rem;
+    }
+    
+    .scorecard-tag {
+        background: #e7f1ff;
+        color: #0066cc;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.7rem;
+        font-weight: 500;
+    }
+    
+    .scorecard-tag.missing {
+        background: #ffe6e6;
+        color: #cc0000;
+    }
+    
+    .scorecard-tag.found {
+        background: #e6ffe6;
+        color: #008000;
+    }
+    
+    .scorecard-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+        border-top: 1px solid #e9ecef;
+        padding-top: 1rem;
+    }
+    
+    .scorecard-metric {
+        text-align: center;
+    }
+    
+    .scorecard-metric-value {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #1e3c72;
+    }
+    
+    .scorecard-metric-label {
+        font-size: 0.65rem;
+        color: #6c757d;
+        text-transform: uppercase;
+    }
+    
+    .quality-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    
+    .quality-high {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .quality-medium {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .quality-low {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
     /* Success/Error messages */
     .stSuccess {
         background-color: #d4edda;
@@ -284,6 +446,10 @@ if 'generated_images' not in st.session_state:
     st.session_state.generated_images = {}
 if 'analysis_done' not in st.session_state:
     st.session_state.analysis_done = False
+if 'image_scorecards' not in st.session_state:
+    st.session_state.image_scorecards = []
+if 'quick_summary' not in st.session_state:
+    st.session_state.quick_summary = None
 
 # -------------------------------------------------
 # API KEY INPUT
@@ -479,6 +645,253 @@ def clean_text(text):
     text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
     return text.strip()
 
+def get_image_dimensions(url, timeout=10):
+    """Fetch image and get its dimensions to check quality"""
+    try:
+        response = requests.get(url, timeout=timeout, stream=True)
+        if response.status_code == 200:
+            img = Image.open(BytesIO(response.content))
+            return img.size  # (width, height)
+    except:
+        pass
+    return None
+
+def validate_image_quality(url, min_width=500, min_height=500):
+    """Validate if an image meets minimum quality requirements"""
+    dimensions = get_image_dimensions(url)
+    if dimensions:
+        width, height = dimensions
+        return {
+            "valid": width >= min_width and height >= min_height,
+            "width": width,
+            "height": height,
+            "quality": "high" if width >= 1000 and height >= 1000 else "medium" if width >= 500 else "low"
+        }
+    return {"valid": False, "width": 0, "height": 0, "quality": "unknown"}
+
+def analyze_single_image_with_vision(client, image_url, product_context, image_number):
+    """Use GPT-4o Vision to analyze a single product image in detail"""
+    
+    analysis_prompt = f"""Analyze this e-commerce product image (Image #{image_number}) in extreme detail.
+
+PRODUCT CONTEXT:
+{product_context}
+
+YOUR TASK - Extract EVERYTHING visible in this image:
+
+1. **VISIBLE TEXT** (read ALL text exactly as shown):
+   - Product titles, subtitles
+   - Feature callouts, bullet points
+   - Numbers, specifications, measurements
+   - Brand names, logos
+   - Certifications, badges
+   - Price tags, offers
+   - Any fine print
+
+2. **VISIBLE ELEMENTS**:
+   - Physical products shown (books, boxes, components)
+   - Count of each item visible
+   - Colors, sizes, materials
+   - Packaging details
+   - USB ports, cables, accessories
+   - Buttons, interfaces, ports
+   - Any included materials
+
+3. **USPs VISIBLE** (claims/features shown):
+   - What benefits are highlighted?
+   - What features are demonstrated?
+   - What makes this product special (as shown)?
+
+4. **QUALITY ASSESSMENT**:
+   - Is the image sharp or blurry?
+   - Is lighting good?
+   - Is background professional?
+   - Are all items clearly visible?
+
+5. **COMPLIANCE CHECK**:
+   - For Image 1: Is background pure white?
+   - Any text overlays?
+   - Any watermarks?
+   - Is product filling ~85% frame?
+
+Respond in this EXACT JSON format only (no markdown):
+{{
+    "image_number": {image_number},
+    "visible_text": ["exact text 1", "exact text 2"],
+    "visible_products": [
+        {{"item": "item name", "count": 1, "description": "brief desc"}}
+    ],
+    "visible_usps": ["usp 1", "usp 2"],
+    "ports_connectors": ["usb-c", "hdmi", etc or empty],
+    "certifications_badges": ["CE", "ISI", etc or empty],
+    "quality_score": 8,
+    "quality_issues": ["issue 1 if any"],
+    "is_sharp": true,
+    "is_professional": true,
+    "background_type": "white/colored/lifestyle/transparent",
+    "compliance_score": 9,
+    "compliance_issues": ["issue if any"],
+    "summary": "2-3 sentence summary of what this image communicates"
+}}"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": analysis_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_url, "detail": "high"}
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1500,
+            temperature=0.1,
+            timeout=45
+        )
+        
+        result = response.choices[0].message.content.strip()
+        # Clean JSON if wrapped in markdown
+        if result.startswith("```"):
+            result = re.sub(r'^```json?\n?', '', result)
+            result = re.sub(r'\n?```$', '', result)
+        
+        return json.loads(result)
+    except json.JSONDecodeError:
+        return {
+            "image_number": image_number,
+            "error": "Failed to parse AI response",
+            "visible_text": [],
+            "visible_products": [],
+            "visible_usps": [],
+            "quality_score": 5,
+            "compliance_score": 5,
+            "summary": "AI response could not be parsed"
+        }
+    except Exception as e:
+        return {
+            "image_number": image_number,
+            "error": str(e),
+            "visible_text": [],
+            "visible_products": [],
+            "visible_usps": [],
+            "quality_score": 0,
+            "compliance_score": 0,
+            "summary": f"Failed to analyze: {str(e)[:50]}"
+        }
+
+def generate_image_scorecards(client, images, product):
+    """Generate detailed scorecards for all product images using Vision API"""
+    
+    # Create product context for the AI
+    product_context = f"""
+Title: {product.get('title', 'Unknown')}
+Brand: {product.get('brand', 'Unknown')}
+Category: {product.get('category', 'Unknown')}
+Bullets: {' | '.join(product.get('bullets', [])[:5])}
+What's in Box: {product.get('whats_in_box', 'Unknown')}
+"""
+    
+    scorecards = []
+    
+    for idx, img_url in enumerate(images[:7], 1):  # Analyze up to 7 images
+        # First validate image quality
+        quality_info = validate_image_quality(img_url)
+        
+        # Then do vision analysis
+        analysis = analyze_single_image_with_vision(client, img_url, product_context, idx)
+        
+        # Combine quality info with analysis
+        scorecard = {
+            "image_number": idx,
+            "image_url": img_url,
+            "dimensions": f"{quality_info.get('width', 0)}x{quality_info.get('height', 0)}",
+            "resolution_quality": quality_info.get('quality', 'unknown'),
+            "is_valid_resolution": quality_info.get('valid', False),
+            **analysis
+        }
+        
+        scorecards.append(scorecard)
+    
+    return scorecards
+
+def render_scorecard_html(scorecard):
+    """Render a single scorecard as HTML"""
+    
+    img_num = scorecard.get('image_number', 1)
+    quality_score = scorecard.get('quality_score', 0)
+    compliance_score = scorecard.get('compliance_score', 0)
+    overall_score = round((quality_score + compliance_score) / 2, 1)
+    
+    # Score class
+    score_class = "score-high" if overall_score >= 7 else "score-medium" if overall_score >= 5 else "score-low"
+    
+    # Quality badge
+    res_quality = scorecard.get('resolution_quality', 'unknown')
+    quality_class = "quality-high" if res_quality == "high" else "quality-medium" if res_quality == "medium" else "quality-low"
+    quality_emoji = "🟢" if res_quality == "high" else "🟡" if res_quality == "medium" else "🔴"
+    
+    # Build tags
+    found_tags = []
+    missing_tags = []
+    
+    for usp in scorecard.get('visible_usps', [])[:3]:
+        found_tags.append(f'<span class="scorecard-tag found">✓ {usp[:25]}{"..." if len(usp) > 25 else ""}</span>')
+    
+    for issue in scorecard.get('quality_issues', [])[:2]:
+        missing_tags.append(f'<span class="scorecard-tag missing">✗ {issue[:25]}{"..." if len(issue) > 25 else ""}</span>')
+    
+    for issue in scorecard.get('compliance_issues', [])[:2]:
+        missing_tags.append(f'<span class="scorecard-tag missing">⚠ {issue[:25]}{"..." if len(issue) > 25 else ""}</span>')
+    
+    tags_html = ''.join(found_tags + missing_tags) if (found_tags or missing_tags) else '<span class="scorecard-tag">No tags</span>'
+    
+    # Summary
+    summary = scorecard.get('summary', 'No analysis available')[:150]
+    if len(scorecard.get('summary', '')) > 150:
+        summary += "..."
+    
+    # Visible text preview
+    visible_text = scorecard.get('visible_text', [])
+    text_preview = ', '.join(visible_text[:3])[:60] + "..." if visible_text else "No text detected"
+    
+    return f'''
+    <div class="image-scorecard">
+        <div class="scorecard-image-wrap">
+            <img src="{scorecard.get('image_url', '')}" alt="Image {img_num}" onerror="this.src='https://via.placeholder.com/300x200?text=Image+{img_num}'">
+            <div class="scorecard-badge">Image {img_num}</div>
+            <div class="scorecard-score {score_class}">{overall_score}</div>
+        </div>
+        <div class="scorecard-body">
+            <div class="scorecard-title">
+                <span class="quality-indicator {quality_class}">{quality_emoji} {scorecard.get('dimensions', 'N/A')}</span>
+                &nbsp;|&nbsp;
+                <span style="color: #6c757d;">{scorecard.get('background_type', 'Unknown')} bg</span>
+            </div>
+            <div class="scorecard-summary">{summary}</div>
+            <div class="scorecard-tags">{tags_html}</div>
+            <div class="scorecard-metrics">
+                <div class="scorecard-metric">
+                    <div class="scorecard-metric-value">{quality_score}/10</div>
+                    <div class="scorecard-metric-label">Quality</div>
+                </div>
+                <div class="scorecard-metric">
+                    <div class="scorecard-metric-value">{compliance_score}/10</div>
+                    <div class="scorecard-metric-label">Compliance</div>
+                </div>
+                <div class="scorecard-metric">
+                    <div class="scorecard-metric-value">{len(scorecard.get('visible_usps', []))}</div>
+                    <div class="scorecard-metric-label">USPs Found</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    '''
+
 def extract_amazon_images(soup, url):
     """Extract all product images from Amazon with multiple strategies"""
     images = []
@@ -578,21 +991,33 @@ def convert_amazon_to_hires(url):
     if not url:
         return url
     
-    # Remove size constraints like ._SX300_., ._SL1500_., ._AC_SX679_., etc.
-    # These patterns limit the image size
-    high_res = re.sub(r'\._[A-Z]{2}_[A-Z0-9_]+_\.', '.', url)
-    high_res = re.sub(r'\._[A-Z0-9_]+_\.', '.', high_res)
+    # Remove ALL size constraints to get original/highest resolution
+    # Common patterns: ._SX300_., ._SL1500_., ._AC_SX679_., ._SS40_., etc.
+    high_res = url
     
-    # Also handle URLs with _SX, _SY, _SL patterns
-    high_res = re.sub(r'_SX\d+_', '', high_res)
-    high_res = re.sub(r'_SY\d+_', '', high_res)
-    high_res = re.sub(r'_SL\d+_', '', high_res)
-    high_res = re.sub(r'_AC_', '', high_res)
-    high_res = re.sub(r'_SR\d+,\d+_', '', high_res)
-    high_res = re.sub(r'_CR\d+,\d+,\d+,\d+_', '', high_res)
+    # Remove underscore patterns that limit size
+    patterns_to_remove = [
+        r'\._[A-Z]{2}_[A-Z0-9_,]+_\.',
+        r'\._[A-Z0-9_,]+_\.',
+        r'_SX\d+_',
+        r'_SY\d+_',
+        r'_SL\d+_',
+        r'_SS\d+_',
+        r'_AC_',
+        r'_SR\d+,\d+_',
+        r'_CR\d+,\d+,\d+,\d+_',
+        r'_QL\d+_',
+        r'_UX\d+_',
+        r'_UY\d+_',
+        r'_PIbundle[^_]*_',
+    ]
     
-    # Clean up any double dots
-    high_res = high_res.replace('..', '.')
+    for pattern in patterns_to_remove:
+        high_res = re.sub(pattern, '.', high_res)
+    
+    # Clean up any double dots or trailing dots before extension
+    high_res = re.sub(r'\.+', '.', high_res)
+    high_res = re.sub(r'\.(\.(jpg|jpeg|png|webp|gif))', r'\1', high_res, flags=re.IGNORECASE)
     
     return high_res
 
@@ -602,14 +1027,18 @@ def convert_flipkart_to_hires(url):
         return url
     
     # Flipkart uses patterns like /128/128/ or /416/416/ for dimensions
-    # Convert to maximum size (1408 is typically the max)
-    high_res = re.sub(r'/\d+/\d+/', '/1408/1408/', url)
+    # Convert to maximum size (1664 is typically the max available)
+    high_res = re.sub(r'/\d+/\d+/', '/1664/1664/', url)
     
     # Also handle _XXX. patterns
-    high_res = re.sub(r'_\d+\.', '_1408.', high_res)
+    high_res = re.sub(r'_\d+\.', '_1664.', high_res)
     
-    # Handle q=XX quality parameter - set to max
+    # Handle q=XX quality parameter - set to max (100)
     high_res = re.sub(r'q=\d+', 'q=100', high_res)
+    
+    # Handle width/height query params
+    high_res = re.sub(r'w=\d+', 'w=1664', high_res)
+    high_res = re.sub(r'h=\d+', 'h=1664', high_res)
     
     return high_res
 
@@ -1173,7 +1602,7 @@ def create_manual_product_data(platform, title, brand, price, rating, category, 
     }
 
 # -------------------------------------------------
-# IMAGE-FOCUSED SEO PROMPT (VERY DEFINED)
+# IMAGE-FOCUSED SEO PROMPT (CONCISE OUTPUT)
 # -------------------------------------------------
 def image_seo_prompt(product: dict) -> str:
     # Format bullets/highlights
@@ -1194,135 +1623,86 @@ def image_seo_prompt(product: dict) -> str:
     whats_in_box = product.get('whats_in_box', 'NOT_FOUND')
     
     return f"""
-You are a senior eCommerce SEO Image Strategist + CRO experimentalist for Amazon India and Flipkart India.
-Your job is NOT to rewrite the title/description (another model does that). Your job is to:
-(A) extract USPs/claims from the existing listing copy,
-(B) audit the current image set against those USPs/claims and marketplace image compliance,
-(C) score Image 1 out of 10 with a strict rubric,
-(D) produce structured "fix prompts" that can be sent directly to an image generation engine (or designer) to create improved images.
-
-MARKETPLACE COMPLIANCE (must check):
-- Amazon main image: pure white background (RGB 255,255,255), product fills ~85% of frame, no text/logos/graphics/borders/watermarks; show the actual product and all included pieces proportionally; don't crop product. (Use this as a hard constraint.) 
-- Flipkart: follow QC-safe rules: minimum resolution guidance; white/light background for main image; avoid price tags/stickers/celebrity edits; avoid text/watermarks if QC rules require it for the category. If there's a conflict between "better marketing" and "QC risk", prefer QC-safe and call out the tradeoff.
+You are a senior eCommerce SEO Image Strategist for Amazon India and Flipkart India.
+Analyze the product listing and provide a CONCISE, ACTION-ORIENTED report.
 
 ================================================================================
-SCRAPED PRODUCT DATA
+PRODUCT DATA
 ================================================================================
-
 PLATFORM: {product.get('platform', 'Unknown')}
-URL: {product.get('url', 'N/A')}
-
 TITLE: {product.get('title', 'NOT_FOUND')}
-
 BRAND: {product.get('brand', 'NOT_FOUND')}
-
 PRICE: {product.get('price', 'NOT_FOUND')}
-
-RATING: {product.get('rating', 'NOT_FOUND')} ({product.get('review_count', 'N/A')})
-
+RATING: {product.get('rating', 'NOT_FOUND')}
 CATEGORY: {product.get('category', 'NOT_FOUND')}
 
-BULLETS / HIGHLIGHTS:
+BULLETS:
 {bullets_text}
 
 DESCRIPTION:
 {product.get('description', 'NOT_FOUND')}
 
-WHAT'S IN THE BOX:
+WHAT'S IN BOX:
 {whats_in_box}
 
-PRODUCT DETAILS / SPECIFICATIONS:
+PRODUCT DETAILS:
 {details_text}
 
-CURRENT PRODUCT IMAGES (URLs):
+CURRENT IMAGES:
 {images_text}
 
-CUSTOMER REVIEWS:
+REVIEWS:
 {reviews_text}
 
 ================================================================================
-ANALYSIS INSTRUCTIONS
+OUTPUT FORMAT (Keep each section SHORT and ACTIONABLE)
 ================================================================================
 
-Based on the above data:
-1) Platform: {product.get('platform', 'Unknown')}
-2) Product type: (infer from title/category - Book / Combo Books / Experiment Kit / Combo Kit+Book / Other)
-3) Target audience + exam context: (infer from title/description - JEE/NEET/Class 9–12/etc.)
-4) Primary keywords: (extract from title)
+## 🎯 QUICK SUMMARY (3 sentences max)
+[Product type, target audience, key value proposition]
 
-Constraints:
-- Any mandatory brand elements (logo usage rules)
-- Any legal/accuracy constraints (no unverifiable claims, no fake certifications)
+## 📋 USP MAP (Table format, max 6 rows)
+| USP | Source | Must Show? |
+|-----|--------|------------|
 
-YOUR PROCESS (do in this order):
+## 🖼️ IMAGE 1 SCORE: X/10
+**Quick verdict:** [One sentence]
+**Top 3 issues:**
+1. [Issue + Fix]
+2. [Issue + Fix]  
+3. [Issue + Fix]
 
-Step 1 — Extract "USP Map" from the listing copy:
-- List each USP/claim as a row with:
-  USP_ID, USP statement, proof/source in copy, buyer intent it answers (trust/learning outcome/value/contents/quality), and "must-be-visible?" (Yes/No).
-- Flag any claims that are vague/unprovable or likely QC-risk (e.g., "#1", "guaranteed results", "government certified" without proof).
+## ⚠️ TOP 5 GAPS (Priority order)
+1. **[Gap]** → [One-line fix]
+2. **[Gap]** → [One-line fix]
+3. **[Gap]** → [One-line fix]
+4. **[Gap]** → [One-line fix]
+5. **[Gap]** → [One-line fix]
 
-Step 2 — Image-by-image audit (Image 1 is highest priority):
-For each image i:
-- Describe what the image communicates in 1–2 sentences (literal + implied).
-- Map which USP_IDs are supported visually (Strong/Partial/Not Shown).
-- Identify missing critical info for buyer decision (esp. "What's included?", "level/exam fit", "how it's used", "outcomes").
-- Identify compliance risks (Amazon rules vs Flipkart QC style). Be explicit.
+## 🛒 AMAZON IMAGE PROMPTS (Concise)
 
-Step 3 — Score Image 1 out of 10 (strict rubric):
-Use this rubric (total 10):
-1) Compliance readiness (0–2)
-2) Clarity & focus at thumbnail size (0–2)
-3) Accurate representation of "what's included" (0–2)
-4) USP alignment (top 3 USPs) (0–2)
-5) Differentiation vs generic alternatives (0–1)
-6) Brand trust & professionalism (0–1)
-Explain the score with 5–8 bullet reasons.
+### Image 1 - Hero
+**Goal:** [One line]
+**Composition:** [One line]
+**Must show:** [Comma-separated list]
+**Avoid:** [Comma-separated list]
 
-Step 4 — "What's Lacking" list (prioritized):
-Give a prioritized list of gaps:
-- Must-fix for compliance
-- Must-fix for conversion
-- Nice-to-have enhancements
-For each gap, specify: (a) why it matters, (b) what to add/change, (c) where (Image 1 vs Image 2..N)
+### Image 2 - Contents
+**Goal:** [One line]
+**Must show:** [Comma-separated list]
 
-Step 5 — Create image-generation-ready prompts (separate outputs):
-You will output TWO sets of prompts:
-A) AMAZON PROMPTS
-B) FLIPKART PROMPTS
+### Image 3 - Benefits
+**Goal:** [One line]
+**Must show:** [Comma-separated list]
 
-For each set:
-- Provide prompts for:
-  - Image 1 (Hero)
-  - Image 2 (Contents/What's inside)
-  - Image 3 (Benefits/learning outcomes)
-  - Image 4 (How to use / steps)
-  - Image 5 (Close-ups / quality / pages / components)
-  - Image 6–7 (Lifestyle / context) ONLY if platform permits and category makes sense
-- Each image prompt must include:
-  1) Goal (1 line)
-  2) Composition (camera angle, framing, object placement)
-  3) Required elements (exact items to show, counts, labels)
-  4) Text overlay rules:
-     - Amazon: NO text on Image 1; text allowed on secondary if compliant.
-     - Flipkart: prefer NO text unless seller confirms QC allows text for the category; if you suggest text, also provide a "no-text" alternate.
-  5) Background and lighting
-  6) Style constraints (clean, modern, high trust, education-focused)
-  7) "Do NOT" list (avoid misleading props, fake badges, clutter, tiny unreadable text)
-  8) Output specs (square, high-res; keep product large and readable)
-- Prompts must be tailored to the specific USPs and gaps you found (don't be generic).
+### Image 4-7
+[Brief 2-line description for each]
 
-OUTPUT FORMAT (must follow exactly):
-1) USP_MAP (table)
-2) IMAGE_AUDIT (Image 1..N, each with USP coverage + issues + compliance)
-3) IMAGE_1_SCORE (score/10 + rubric breakdown)
-4) PRIORITIZED_GAPS (bulleted)
-5) AMAZON_IMAGE_PROMPTS (Image 1..7)
-6) FLIPKART_IMAGE_PROMPTS (Image 1..7, with "no-text alternate" where needed)
+## 🛍️ FLIPKART IMAGE PROMPTS (Concise)
+[Same format as Amazon, highlight QC differences only]
 
-Important:
-- Never invent product contents. If "What's in the box" is unclear, say so and propose the safest depiction.
-- Keep everything consistent with the listing copy and included-items section.
-- Be blunt and practical: treat this like a conversion-rate experiment plan.
+---
+Keep EVERYTHING concise. No verbose explanations. Bullet points preferred.
 """
 
 # -------------------------------------------------
@@ -1753,37 +2133,93 @@ if analyze_btn:
         st.session_state.product = product
 
     # Generate AI Analysis
-    with st.spinner("🧠 Generating Image Strategy Analysis..."):
-        resp = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": image_seo_prompt(st.session_state.product)}],
-            temperature=0.2,
-            max_tokens=8000
-        )
-        st.session_state.ai_response = resp.choices[0].message.content
+    try:
+        with st.spinner("🧠 Generating Image Strategy Analysis..."):
+            resp = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": image_seo_prompt(st.session_state.product)}],
+                temperature=0.2,
+                max_tokens=4000,
+                timeout=60
+            )
+            st.session_state.ai_response = resp.choices[0].message.content
+    except Exception as e:
+        st.error(f"❌ Failed to connect to OpenAI API: {str(e)}")
+        st.warning("🔧 **Troubleshooting tips:**\n- Check your internet connection\n- Verify your API key is correct\n- Try again in a few moments")
+        st.session_state.ai_response = None
+
+    # Generate Image Scorecards (Vision Analysis)
+    if st.session_state.product.get('images'):
+        with st.spinner("🔍 Analyzing each image with AI Vision (this provides detailed insights)..."):
+            try:
+                st.session_state.image_scorecards = generate_image_scorecards(
+                    client, 
+                    st.session_state.product['images'], 
+                    st.session_state.product
+                )
+            except Exception as e:
+                st.warning(f"Could not generate image scorecards: {str(e)}")
+                st.session_state.image_scorecards = []
+    
+    # Generate Quick Summary
+    try:
+        with st.spinner("📝 Generating quick summary..."):
+            quick_summary_prompt = f"""Based on this product, give me a 3-bullet executive summary:
+
+Title: {st.session_state.product.get('title', 'Unknown')}
+Platform: {st.session_state.product.get('platform', 'Unknown')}
+Category: {st.session_state.product.get('category', 'Unknown')}
+Price: {st.session_state.product.get('price', 'Unknown')}
+Rating: {st.session_state.product.get('rating', 'Unknown')}
+Images found: {len(st.session_state.product.get('images', []))}
+Bullets: {st.session_state.product.get('bullets', [])[:3]}
+
+Format:
+• **Product:** [Type + target in 10 words]
+• **Key Issue:** [Biggest image/listing gap in 15 words]
+• **Quick Win:** [Most impactful improvement in 15 words]
+
+Keep it SHORT."""
+
+            summary_resp = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": quick_summary_prompt}],
+                temperature=0.2,
+                max_tokens=300,
+                timeout=30
+            )
+            st.session_state.quick_summary = summary_resp.choices[0].message.content
+    except Exception as e:
+        st.warning(f"Could not generate quick summary: {str(e)}")
+        st.session_state.quick_summary = None
 
     # Generate Image Brief Pack
-    with st.spinner("📋 Generating Image Brief Pack..."):
-        brief_resp = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": image_brief_prompt(st.session_state.product)}],
-            temperature=0.1,
-            max_tokens=6000
-        )
-        brief_raw = brief_resp.choices[0].message.content
-        
-        # Parse the JSON response
-        try:
-            cleaned_brief = brief_raw.strip()
-            if cleaned_brief.startswith("```"):
-                cleaned_brief = re.sub(r'^```json?\n?', '', cleaned_brief)
-                cleaned_brief = re.sub(r'\n?```$', '', cleaned_brief)
-            st.session_state.image_brief = json.loads(cleaned_brief)
-        except json.JSONDecodeError:
+    try:
+        with st.spinner("📋 Generating Image Brief Pack..."):
+            brief_resp = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": image_brief_prompt(st.session_state.product)}],
+                temperature=0.1,
+                max_tokens=6000,
+                timeout=90
+            )
+            brief_raw = brief_resp.choices[0].message.content
+            
+            # Parse the JSON response
             try:
-                st.session_state.image_brief = safe_json_from_ai(brief_raw, client)
-            except:
-                st.session_state.image_brief = None
+                cleaned_brief = brief_raw.strip()
+                if cleaned_brief.startswith("```"):
+                    cleaned_brief = re.sub(r'^```json?\n?', '', cleaned_brief)
+                    cleaned_brief = re.sub(r'\n?```$', '', cleaned_brief)
+                st.session_state.image_brief = json.loads(cleaned_brief)
+            except json.JSONDecodeError:
+                try:
+                    st.session_state.image_brief = safe_json_from_ai(brief_raw, client)
+                except:
+                    st.session_state.image_brief = None
+    except Exception as e:
+        st.warning(f"Could not generate image brief: {str(e)}")
+        st.session_state.image_brief = None
     
     st.session_state.analysis_done = True
     st.rerun()
@@ -1795,6 +2231,19 @@ if st.session_state.analysis_done and st.session_state.product:
     product = st.session_state.product
     
     st.markdown("---")
+    
+    # =========================================================
+    # QUICK SUMMARY SECTION (NEW - Concise Overview)
+    # =========================================================
+    if st.session_state.quick_summary:
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem;">
+            <h3 style="color: white; margin: 0 0 1rem 0;">⚡ Quick Summary</h3>
+            <div style="color: #e8e8e8; font-size: 1rem; line-height: 1.6;">
+        """, unsafe_allow_html=True)
+        st.markdown(st.session_state.quick_summary)
+        st.markdown("</div></div>", unsafe_allow_html=True)
     
     # Display scraped/input data in organized sections
     st.markdown('<p class="section-header">📦 Product Data Extracted</p>', unsafe_allow_html=True)
@@ -1869,9 +2318,89 @@ if st.session_state.analysis_done and st.session_state.product:
         with st.expander("📄 Description"):
             st.write(product['description'])
     
-    # Display product images (HIGH RESOLUTION)
+    st.markdown("---")
+    
+    # =========================================================
+    # IMAGE SCORECARDS SECTION (NEW - Beautiful Cards)
+    # =========================================================
+    if st.session_state.image_scorecards:
+        st.markdown('<p class="section-header">🎴 Image Analysis Scorecards</p>', unsafe_allow_html=True)
+        
+        # Calculate aggregate stats
+        total_images = len(st.session_state.image_scorecards)
+        avg_quality = sum(s.get('quality_score', 0) for s in st.session_state.image_scorecards) / total_images if total_images else 0
+        avg_compliance = sum(s.get('compliance_score', 0) for s in st.session_state.image_scorecards) / total_images if total_images else 0
+        total_usps = sum(len(s.get('visible_usps', [])) for s in st.session_state.image_scorecards)
+        high_res_count = sum(1 for s in st.session_state.image_scorecards if s.get('resolution_quality') == 'high')
+        
+        # Aggregate stats row
+        stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+        with stat_col1:
+            st.metric("📊 Avg Quality", f"{avg_quality:.1f}/10", delta=None)
+        with stat_col2:
+            st.metric("✅ Avg Compliance", f"{avg_compliance:.1f}/10", delta=None)
+        with stat_col3:
+            st.metric("✨ USPs Found", total_usps, delta=None)
+        with stat_col4:
+            st.metric("🖼️ High-Res", f"{high_res_count}/{total_images}", delta=None)
+        
+        st.markdown("""
+        <p style="color: #6c757d; margin: 1rem 0;">
+            Each image analyzed with AI Vision. Scores based on quality, compliance & USP coverage.
+        </p>
+        """, unsafe_allow_html=True)
+        
+        # Render scorecards in a grid
+        scorecards_html = '<div class="scorecard-container">'
+        for scorecard in st.session_state.image_scorecards:
+            scorecards_html += render_scorecard_html(scorecard)
+        scorecards_html += '</div>'
+        
+        st.markdown(scorecards_html, unsafe_allow_html=True)
+        
+        # Detailed view for each scorecard
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("📊 Detailed Image Analysis", expanded=False):
+            for scorecard in st.session_state.image_scorecards:
+                st.markdown(f"### Image {scorecard.get('image_number', '?')}")
+                
+                col1, col2 = st.columns([1, 2])
+                
+                with col1:
+                    try:
+                        st.image(scorecard.get('image_url', ''), use_container_width=True)
+                    except:
+                        st.markdown(f"[View Image]({scorecard.get('image_url', '')})")
+                
+                with col2:
+                    st.markdown(f"**📐 Resolution:** {scorecard.get('dimensions', 'N/A')}")
+                    st.markdown(f"**🎯 Quality Score:** {scorecard.get('quality_score', 0)}/10")
+                    st.markdown(f"**✅ Compliance Score:** {scorecard.get('compliance_score', 0)}/10")
+                    st.markdown(f"**🖼️ Background:** {scorecard.get('background_type', 'Unknown')}")
+                    
+                    if scorecard.get('visible_text'):
+                        st.markdown("**📝 Visible Text:**")
+                        for text in scorecard.get('visible_text', [])[:5]:
+                            st.markdown(f"• {text}")
+                    
+                    if scorecard.get('visible_usps'):
+                        st.markdown("**✨ USPs Shown:**")
+                        for usp in scorecard.get('visible_usps', []):
+                            st.markdown(f"• {usp}")
+                    
+                    if scorecard.get('ports_connectors'):
+                        st.markdown(f"**🔌 Ports/Connectors:** {', '.join(scorecard.get('ports_connectors', []))}")
+                    
+                    if scorecard.get('quality_issues'):
+                        st.markdown("**⚠️ Issues:**")
+                        for issue in scorecard.get('quality_issues', []):
+                            st.markdown(f"• {issue}")
+                
+                st.markdown("---")
+    
+    # Display product images (HIGH RESOLUTION) - simplified view
     if product.get('images'):
-        with st.expander("🖼️ Current Product Images", expanded=False):
+        with st.expander("🖼️ Original Product Images (Full Resolution)", expanded=False):
             st.caption("💡 Click on image URLs below to view full resolution")
             num_images = len(product['images'])
             
@@ -1903,13 +2432,13 @@ if st.session_state.analysis_done and st.session_state.product:
     st.markdown("---")
     
     # =========================================================
-    # DISPLAY AI ANALYSIS
+    # DISPLAY AI ANALYSIS (Collapsible for concise view)
     # =========================================================
     if st.session_state.ai_response:
         st.markdown('<p class="section-header">📐 AI Image Strategy Analysis</p>', unsafe_allow_html=True)
         
-        # Display in a nice container
-        with st.container():
+        # Display in an expander since it's longer - users can expand if they want details
+        with st.expander("📋 Full Strategy Report", expanded=True):
             st.markdown(st.session_state.ai_response)
         
         # Download option for the analysis
@@ -1922,9 +2451,6 @@ if st.session_state.analysis_done and st.session_state.product:
                 mime="text/markdown",
                 key="download_analysis"
             )
-        
-        with st.expander("🔧 Raw Analysis Response"):
-            st.code(st.session_state.ai_response)
 
     st.markdown("---")
     
@@ -2106,6 +2632,8 @@ if st.session_state.analysis_done and st.session_state.product:
         st.session_state.image_brief = None
         st.session_state.generated_images = {}
         st.session_state.analysis_done = False
+        st.session_state.image_scorecards = []
+        st.session_state.quick_summary = None
         st.rerun()
 
 else:
