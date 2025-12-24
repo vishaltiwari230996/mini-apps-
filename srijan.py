@@ -1,397 +1,664 @@
-import io
-from typing import List, Dict, Any
+# app.py - FIXED VERSION
+# Complete working version with Part 1 (original) and Part 2 (redesigned)
+
+import os
+import time
+import json
+from typing import List, Dict, Tuple, Optional
+from dataclasses import dataclass
+from enum import Enum
 
 import streamlit as st
+import pandas as pd
+from PIL import Image
+import fitz  # PyMuPDF
+import pytesseract
+from openai import OpenAI
 
-# Optional dependencies (for export)
-try:
-    from docx import Document  # python-docx
-except Exception:
-    Document = None
+HIGH_CONFIDENCE_THRESHOLD = 0.95
 
-try:
-    from reportlab.lib.pagesizes import letter
-    from reportlab.pdfgen import canvas
-except Exception:
-    canvas = None
+# =============================
+# CONFIGURATION
+# =============================
 
+class OperationMode(Enum):
+    """Operation modes for Part 2"""
+    GENERATE_FROM_TEXT = "generate_from_text"
+    TRANSFORM_FROM_JSON = "transform_from_json"
 
-# ----------------------- Helper Functions -----------------------
+# Configure Tesseract
+if os.name == 'nt':
+    possible_paths = [
+        r"C:\Users\vishal tiwari\AppData\Local\Programs\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
+    ]
+    for path in possible_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
 
-def build_structured_questions(
-    exam_name: str,
-    class_name: str,
-    subject: str,
-    subtopics: List[str],
-    typologies: List[str],
-    difficulty: str,
-    need_diagram: bool,
-    num_questions: int,
-    ocr_text: str,
-    base_prompt: str,
-    engine_config: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    """Stub: replace this with real dual‑engine AI calls.
+def build_openai_client(user_api_key: str | None) -> OpenAI | None:
+    """Build OpenAI client"""
+    api_key = user_api_key or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        st.error("Please provide an OpenAI API key to run extraction.")
+        return None
+    return OpenAI(api_key=api_key)
 
-    For now, returns dummy questions so the UI is usable immediately.
-    Later you can plug in OpenAI / Gemini / Claude using engine_config.
-    """
-    questions = []
-    for i in range(1, num_questions + 1):
-        q = {
-            "id": i,
-            "question_text": (
-                f"[{exam_name} | {subject}] Q{i}: Sample question on "
-                f"{', '.join(subtopics) or 'chapter core concepts'} "
-                f"({difficulty}, {', '.join(typologies) or 'Mixed type'})."
-            ),
-            "needs_diagram": need_diagram,
-            "solution": "Sample solution steps will appear here once AI is wired.",
-        }
-        questions.append(q)
+# =============================
+# PROMPT TEMPLATES
+# =============================
+
+ENGINE_A_PROMPT = """
+You are an expert exam question parser for competitive exams like NEET and JEE.
+
+You will receive raw OCR text from a SINGLE PAGE of a PDF that contains questions,
+options, answers, and sometimes solutions/explanations.
+
+Your task:
+1. Identify individual questions present ONLY on this page.
+2. For each question, extract and structure as JSON with these keys:
+   - "id": integer index starting from 1 for THIS PAGE
+   - "question": full question stem as single string
+   - "options": list of strings (["A. ...", "B. ...", ...])
+   - "answer": correct answer if available, else null
+   - "explanation": solution if available, else null
+   - "page": integer page number
+   - "has_figure": boolean (true if refers to diagram/figure)
+   - "confidence": float 0-1 (certainty of OCR quality)
+
+Rules:
+- Return STRICTLY valid JSON array: [ { ... }, { ... }, ... ]
+- No extra commentary
+- Merge multi-line questions into single string
+- Normalize options format
+- Ignore headers/footers
+""".strip()
+
+ENGINE_B_PROMPT = ENGINE_A_PROMPT
+
+GENERATION_PROMPT = """
+You are an expert exam question generator for competitive exams like NEET and JEE.
+
+You will receive study material text. Generate 3-5 high-quality MCQs based on the content.
+
+For each question, provide JSON with:
+- "id": integer starting from 1
+- "question": question text
+- "options": list of 4 options
+- "answer": correct option label (A/B/C/D)
+- "explanation": detailed explanation
+- "page": page number provided
+- "has_figure": false (usually)
+- "confidence": 1.0
+
+Rules:
+- Return STRICTLY valid JSON array
+- No extra commentary
+- Ensure relevance to input text
+""".strip()
+
+TRANSFORMATION_PROMPT = """
+You are an expert at transforming exam questions.
+
+Transform questions according to user instructions while maintaining JSON structure.
+
+Rules:
+- Return STRICTLY valid JSON array
+- Maintain structure (id, question, options, answer, explanation, page, has_figure, confidence)
+- No extra commentary
+""".strip()
+
+# =============================
+# UTILITY FUNCTIONS
+# =============================
+
+def _clean_model_output(content: str) -> str:
+    """Clean model output artifacts"""
+    content = content.strip()
+    if content.startswith("```json"):
+        content = content[7:]
+    if content.startswith("```"):
+        content = content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    return content.strip()
+
+def parse_questions_from_json(content: str) -> List[Dict]:
+    """Parse and validate questions from JSON"""
+    cleaned = _clean_model_output(content)
+    questions = json.loads(cleaned)
+    if not isinstance(questions, list):
+        raise ValueError("Expected JSON array of questions")
     return questions
 
+# =============================
+# UI COMPONENTS (REUSABLE)
+# =============================
 
-def questions_to_plain_text(questions: List[Dict[str, Any]]) -> str:
-    lines = []
-    for q in questions:
-        lines.append(f"Q{q['id']}. {q['question_text']}")
-        if q.get("needs_diagram"):
-            lines.append("[Diagram required]")
-        lines.append("")
-        lines.append("Solution:")
-        lines.append(q.get("solution", ""))
-        lines.append("\n" + "-" * 80 + "\n")
-    return "\n".join(lines)
+class QuestionPreview:
+    """Handles question rendering"""
+    
+    @staticmethod
+    def render_single_question(question: Dict, index: int = None):
+        """Render single question"""
+        if index is not None:
+            st.markdown(f"**Question {index}:**")
+        
+        st.markdown(f"**Q:** {question.get('question', '')}")
+        
+        if question.get("options"):
+            st.markdown("**Options:**")
+            for opt in question["options"]:
+                st.write(f"  {opt}")
+        
+        if question.get("answer"):
+            st.success(f"**Answer:** {question['answer']}")
+        
+        if question.get("explanation"):
+            st.info(f"**Explanation:** {question['explanation']}")
+    
+    @staticmethod
+    def render_question_list(questions: List[Dict], max_preview: int = 10):
+        """Render list of questions"""
+        preview_count = min(len(questions), max_preview)
+        
+        for i in range(preview_count):
+            q = questions[i]
+            preview_text = q.get('question', '')[:80]
+            
+            with st.expander(f"Q{i+1}: {preview_text}..."):
+                QuestionPreview.render_single_question(q)
+        
+        if len(questions) > max_preview:
+            st.info(f"Showing first {max_preview} of {len(questions)} questions.")
 
-
-def export_to_docx(questions: List[Dict[str, Any]]) -> io.BytesIO:
-    if Document is None:
-        raise RuntimeError("python-docx is not installed. Please add it to requirements.txt.")
-
-    doc = Document()
-    doc.add_heading("Generated Questions", level=1)
-
-    for q in questions:
-        doc.add_paragraph(f"Q{q['id']}. {q['question_text']}")
-        if q.get("needs_diagram"):
-            doc.add_paragraph("[Diagram required]", style="Intense Quote")
-        doc.add_paragraph("Solution:", style="Heading 3")
-        doc.add_paragraph(q.get("solution", ""))
-        doc.add_page_break()
-
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-
-def export_to_pdf(questions: List[Dict[str, Any]]) -> io.BytesIO:
-    if canvas is None:
-        raise RuntimeError("reportlab is not installed. Please add it to requirements.txt.")
-
-    buffer = io.BytesIO()
-    c = canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    text_obj = c.beginText()
-    text_obj.setTextOrigin(40, height - 40)
-    text_obj.setLeading(16)
-
-    text_obj.textLine("Generated Questions")
-    text_obj.textLine("" )
-
-    plain = questions_to_plain_text(questions)
-    for line in plain.splitlines():
-        if text_obj.getY() <= 40:
-            c.drawText(text_obj)
-            c.showPage()
-            text_obj = c.beginText(40, height - 40)
-            text_obj.setLeading(16)
-        text_obj.textLine(line)
-
-    c.drawText(text_obj)
-    c.showPage()
-    c.save()
-    buffer.seek(0)
-    return buffer
-
-
-# ----------------------- Streamlit UI -----------------------
-
-st.set_page_config(
-    page_title="New Question Generator",
-    page_icon="🧠",
-    layout="wide",
-)
-
-st.title("🧠 New Question Generator")
-st.caption(
-    "Design questions aligned with PYQ + practice sets using dual AI engines."
-)
-
-# Keep questions in session so export buttons work after generation
-if "generated_questions" not in st.session_state:
-    st.session_state.generated_questions = []
-
-
-# --------- Layout: Inputs (left) | Engine + Output (right) ---------
-
-col_left, col_right = st.columns([2, 1], gap="large")
-
-with col_left:
-    st.subheader("1️⃣ Exam & Question Blueprint")
-
-    with st.form("question_spec_form"):
-        exam_name = st.text_input("Exam name", placeholder="JEE Main, NEET UG, SSC CGL, ...")
-        class_name = st.text_input("Class / Grade", placeholder="11, 12, Droppers, ...")
-        subject = st.text_input("Subject", placeholder="Physics, Chemistry, Biology, ...")
-
-        subtopics_raw = st.text_input(
-            "Subtopics (comma‑separated)",
-            placeholder="Kinematics, NLM, Work-Energy, ...",
-        )
-        subtopics = [s.strip() for s in subtopics_raw.split(",") if s.strip()]
-
-        typologies_options = [
-            "Single correct MCQ",
-            "Multiple correct MCQ",
-            "Integer type",
-            "Assertion-Reason",
-            "Match the columns",
-            "Numerical",
-            "Subjective (short)",
-            "Subjective (long)",
-        ]
-        typologies = st.multiselect(
-            "Question typologies",
-            typologies_options,
-            default=["Single correct MCQ"],
+class DownloadButton:
+    """Handles downloads"""
+    
+    @staticmethod
+    def create_json_download(data: List[Dict], filename: str, label: str = "⬇️ Download JSON"):
+        """Create JSON download button"""
+        json_str = json.dumps(data, ensure_ascii=False, indent=2)
+        st.download_button(
+            label=label,
+            data=json_str,
+            file_name=filename,
+            mime="application/json",
         )
 
-        difficulty = st.select_slider(
-            "Difficulty level",
-            options=["Easy", "Easy-Medium", "Medium", "Medium-Hard", "Hard"],
-            value="Medium",
+# =============================
+# CORE PROCESSING CLASSES
+# =============================
+
+class QuestionGenerator:
+    """Generates questions from text"""
+    
+    def __init__(self, client: OpenAI, model_name: str):
+        self.client = client
+        self.model_name = model_name
+    
+    def generate(self, text: str, custom_prompt: Optional[str] = None) -> List[Dict]:
+        """Generate questions using OpenAI"""
+        prompt = custom_prompt or GENERATION_PROMPT
+        
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": f"Generate questions from:\n\n{text}"},
+            ],
+            temperature=0.3,
         )
+        
+        content = response.choices[0].message.content.strip()
+        return parse_questions_from_json(content)
 
-        need_diagram = st.radio(
-            "Need diagram?",
-            ["No", "Yes"],
-            index=0,
-            horizontal=True,
-        ) == "Yes"
-
-        num_questions = st.number_input(
-            "How many questions to generate?",
-            min_value=1,
-            max_value=50,
-            value=5,
-            step=1,
+class QuestionTransformer:
+    """Transforms existing questions"""
+    
+    def __init__(self, client: OpenAI, model_name: str):
+        self.client = client
+        self.model_name = model_name
+    
+    def transform(
+        self, 
+        questions: List[Dict], 
+        instruction: str,
+        custom_prompt: Optional[str] = None
+    ) -> List[Dict]:
+        """Transform questions per instruction"""
+        prompt = custom_prompt or TRANSFORMATION_PROMPT
+        questions_json = json.dumps(questions, ensure_ascii=False, indent=2)
+        
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": f"Instruction: {instruction}\n\nQuestions:\n{questions_json}"},
+            ],
+            temperature=0.3,
         )
+        
+        content = response.choices[0].message.content.strip()
+        return parse_questions_from_json(content)
 
-        st.markdown("---")
-        st.subheader("2️⃣ Source Documents (OCR Output)")
-        st.caption("Upload the *OCR-done* text from PYQ + practice sets (up to 2 files).")
+# =============================
+# OCR FUNCTIONS (PART 1)
+# =============================
 
-        ocr_files = st.file_uploader(
-            "Upload OCR text files",
-            type=["txt"],
-            accept_multiple_files=True,
-            help="For now, use .txt exports from Google Vision / OCR.",
-        )
+def pdf_to_images(pdf_bytes: bytes, dpi: int = 300) -> List[Image.Image]:
+    """Convert PDF to images"""
+    pages: List[Image.Image] = []
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    zoom = dpi / 72
+    mat = fitz.Matrix(zoom, zoom)
 
-        base_prompt = st.text_area(
-            "Generation prompt / template",
-            height=180,
-            placeholder=(
-                "Paste the master prompt that instructs the AI how to create totally new,\n"
-                "pattern-aligned questions + solutions (teacher-grade explanation, etc.)."
-            ),
-        )
+    for page in doc:
+        pix = page.get_pixmap(matrix=mat)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        pages.append(img)
 
-        submitted = st.form_submit_button("🚀 Generate Questions")
+    doc.close()
+    return pages
 
-        if submitted:
-            if not exam_name or not subject:
-                st.error("Please fill at least *Exam name* and *Subject*.")
-            elif not ocr_files:
-                st.error("Please upload at least one OCR text file.")
-            elif not base_prompt.strip():
-                st.error("Please paste your generation prompt / template.")
-            else:
-                # Concatenate OCR text
-                all_ocr_text = "\n\n".join(
-                    f.read().decode("utf-8", errors="ignore") for f in ocr_files
-                )
+def ocr_image_to_text(img: Image.Image) -> str:
+    """OCR image to text"""
+    return pytesseract.image_to_string(img, lang="eng")
 
-                engine_config = st.session_state.get("engine_config", {})
-
-                with st.spinner("Calling AI engines and building questions..."):
-                    questions = build_structured_questions(
-                        exam_name=exam_name,
-                        class_name=class_name,
-                        subject=subject,
-                        subtopics=subtopics,
-                        typologies=typologies,
-                        difficulty=difficulty,
-                        need_diagram=need_diagram,
-                        num_questions=num_questions,
-                        ocr_text=all_ocr_text,
-                        base_prompt=base_prompt,
-                        engine_config=engine_config,
-                    )
-
-                st.session_state.generated_questions = questions
-                st.success(f"Generated {len(questions)} question(s).")
-
-
-with col_right:
-    st.subheader("3️⃣ AI Engine Settings")
-
-    if "engine_config" not in st.session_state:
-        st.session_state.engine_config = {
-            "primary_provider": "OpenAI",
-            "primary_model": "gpt-4.1",
-            "secondary_provider": "None",
-            "secondary_model": "",
-            "api_keys": {},
-        }
-
-    engine_config = st.session_state.engine_config
-
-    primary_provider = st.selectbox(
-        "Primary engine",
-        ["OpenAI", "Gemini", "Claude"],
-        index=["OpenAI", "Gemini", "Claude"].index(engine_config["primary_provider"]),
+def extract_questions_from_page(
+    client: OpenAI,
+    ocr_text: str,
+    page_num: int,
+    system_prompt: str,
+    model_name: str = "gpt-4o-mini"
+) -> Tuple[List[Dict], str, float]:
+    """Extract questions from page using OpenAI"""
+    user_msg = f"[Page {page_num}]\n\n{ocr_text}"
+    
+    start_time = time.time()
+    resp = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_msg},
+        ],
+        temperature=0.3,
     )
+    elapsed = time.time() - start_time
+    
+    content = resp.choices[0].message.content.strip()
+    content = _clean_model_output(content)
+    
+    try:
+        questions = json.loads(content)
+        return questions, content, elapsed
+    except json.JSONDecodeError:
+        return [], content, elapsed
 
-    if primary_provider == "OpenAI":
-        primary_model = st.selectbox(
-            "Primary model",
-            ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-5.1"],
-            index=0,
-        )
-    elif primary_provider == "Gemini":
-        primary_model = st.selectbox(
-            "Primary model",
-            ["gemini-1.5-pro", "gemini-1.5-flash"],
-            index=0,
-        )
-    else:
-        primary_model = st.selectbox(
-            "Primary model",
-            ["claude-3-5-sonnet", "claude-3-opus"],
-            index=0,
-        )
+# =============================
+# PART 2 UI FLOWS (REDESIGNED)
+# =============================
 
-    primary_key = st.text_input(
-        f"{primary_provider} API key",
-        type="password",
-        help="Key is stored only in session_state in this app.",
-    )
-
-    st.markdown("---")
-    st.caption("Optional: configure a *secondary* engine for dual-model workflows.")
-
-    use_secondary = st.checkbox("Enable dual engine (secondary model)")
-
-    secondary_provider = "None"
-    secondary_model = ""
-    secondary_key = ""
-
-    if use_secondary:
-        secondary_provider = st.selectbox(
-            "Secondary engine",
-            ["OpenAI", "Gemini", "Claude"],
-            index=1,
-            key="secondary_provider_box",
-        )
-
-        if secondary_provider == "OpenAI":
-            secondary_model = st.selectbox(
-                "Secondary model",
-                ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-5.1"],
-                index=1,
-                key="secondary_model_box",
-            )
-        elif secondary_provider == "Gemini":
-            secondary_model = st.selectbox(
-                "Secondary model",
-                ["gemini-1.5-pro", "gemini-1.5-flash"],
-                index=1,
-                key="secondary_model_box",
+class GenerateFromTextFlow:
+    """Generate questions from text"""
+    
+    def __init__(self, client: OpenAI, model_name: str):
+        self.generator = QuestionGenerator(client, model_name)
+    
+    def render(self):
+        """Render generation UI"""
+        st.subheader("✍️ Generate Questions from Text")
+        
+        # Custom prompt (optional)
+        use_custom = st.checkbox("Use custom generation prompt", value=False)
+        if use_custom:
+            custom_prompt = st.text_area(
+                "Custom Generation Prompt",
+                value=GENERATION_PROMPT,
+                height=200
             )
         else:
-            secondary_model = st.selectbox(
-                "Secondary model",
-                ["claude-3-5-sonnet", "claude-3-opus"],
-                index=0,
-                key="secondary_model_box",
-            )
-
-        secondary_key = st.text_input(
-            f"{secondary_provider} API key",
-            type="password",
-            key="secondary_key_box",
+            custom_prompt = GENERATION_PROMPT
+        
+        # Text input
+        user_text = st.text_area(
+            "Paste study material or theory text",
+            height=200,
+            placeholder="Enter educational content here..."
         )
+        
+        # Generate button
+        if st.button("🚀 Generate Questions", type="primary"):
+            if not user_text.strip():
+                st.warning("Please enter some text first.")
+                return
+            
+            self._execute_generation(user_text, custom_prompt)
+    
+    def _execute_generation(self, text: str, prompt: str):
+        """Execute generation"""
+        with st.spinner("Generating questions..."):
+            try:
+                questions = self.generator.generate(text, prompt)
+                
+                st.success(f"✅ Generated {len(questions)} questions!")
+                
+                # Preview first question
+                if questions:
+                    st.markdown("### Preview of First Question:")
+                    QuestionPreview.render_single_question(questions[0])
+                    st.divider()
+                
+                # Show all questions
+                st.markdown("### All Generated Questions:")
+                QuestionPreview.render_question_list(questions)
+                
+                # Download
+                DownloadButton.create_json_download(
+                    questions,
+                    "generated_questions.json",
+                    "⬇️ Download Generated Questions"
+                )
+                
+            except json.JSONDecodeError:
+                st.error("Failed to parse AI response. Try simplifying your input.")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
-    # Save engine config
-    engine_config.update(
-        {
-            "primary_provider": primary_provider,
-            "primary_model": primary_model,
-            "secondary_provider": secondary_provider,
-            "secondary_model": secondary_model,
-            "api_keys": {
-                primary_provider: primary_key,
-                secondary_provider: secondary_key,
-            },
-        }
+class TransformFromJSONFlow:
+    """Transform questions from JSON"""
+    
+    def __init__(self, client: OpenAI, model_name: str):
+        self.transformer = QuestionTransformer(client, model_name)
+    
+    def render(self):
+        """Render transformation UI"""
+        st.subheader("📁 Transform Questions from JSON")
+        
+        # File upload
+        uploaded_json = st.file_uploader(
+            "Upload JSON with questions",
+            type=["json"],
+            help="From extraction or previous generation"
+        )
+        
+        if uploaded_json is None:
+            st.info("👆 Upload a JSON file to get started")
+            return
+        
+        questions = self._load_questions(uploaded_json)
+        if questions is None:
+            return
+        
+        # Display loaded questions
+        self._display_loaded_questions(questions)
+        
+        # Transformation interface
+        self._render_transformation_interface(questions)
+    
+    def _load_questions(self, file) -> Optional[List[Dict]]:
+        """Load questions from file"""
+        try:
+            questions = json.load(file)
+            
+            if not isinstance(questions, list):
+                st.error("Invalid JSON. Expected array of questions.")
+                return None
+            
+            st.success(f"✅ Loaded {len(questions)} questions!")
+            return questions
+            
+        except json.JSONDecodeError:
+            st.error("Invalid JSON file.")
+            return None
+        except Exception as e:
+            st.error(f"Error loading file: {str(e)}")
+            return None
+    
+    def _display_loaded_questions(self, questions: List[Dict]):
+        """Display preview"""
+        st.markdown("### 📋 Questions Preview")
+        QuestionPreview.render_question_list(questions, max_preview=10)
+        st.divider()
+    
+    def _render_transformation_interface(self, questions: List[Dict]):
+        """Render transformation controls"""
+        st.markdown("### 🔄 Transform Questions")
+        
+        # Custom prompt (optional)
+        use_custom = st.checkbox("Use custom transformation prompt", value=False)
+        if use_custom:
+            custom_prompt = st.text_area(
+                "Custom Transformation Prompt",
+                value=TRANSFORMATION_PROMPT,
+                height=150
+            )
+        else:
+            custom_prompt = None
+        
+        # Transformation instruction
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            user_instruction = st.text_input(
+                "What do you want to do?",
+                placeholder="e.g., 'Make harder', 'Translate to Hindi', 'Add explanations'"
+            )
+        
+        with col2:
+            st.write("")
+            st.write("")
+            transform_btn = st.button("🔄 Transform", type="primary", use_container_width=True)
+        
+        # Quick templates
+        with st.expander("💡 Quick Templates"):
+            templates = {
+                "Make Harder": "Increase difficulty with complex options",
+                "Simplify": "Make easier with simpler language",
+                "Add Explanations": "Add detailed explanations to all",
+                "Hindi Translation": "Translate everything to Hindi",
+                "Create Variations": "Create 2-3 variations per question",
+                "Add Distractors": "Improve wrong options",
+            }
+            
+            selected = st.selectbox("Choose template", ["Custom"] + list(templates.keys()))
+            
+            if selected != "Custom":
+                st.code(templates[selected])
+        
+        # Execute transformation
+        if transform_btn:
+            if not user_instruction.strip():
+                st.error("Please enter an instruction or select a template.")
+                return
+            
+            self._execute_transformation(questions, user_instruction, custom_prompt)
+    
+    def _execute_transformation(
+        self, 
+        questions: List[Dict], 
+        instruction: str,
+        custom_prompt: Optional[str]
+    ):
+        """Execute transformation"""
+        with st.spinner(f"Transforming {len(questions)} questions..."):
+            try:
+                transformed = self.transformer.transform(questions, instruction, custom_prompt)
+                
+                st.success(f"✅ Transformed {len(transformed)} questions!")
+                
+                # Comparison
+                st.markdown("### 📊 Transformation Results")
+                
+                if transformed:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**Original:**")
+                        QuestionPreview.render_single_question(questions[0])
+                    
+                    with col2:
+                        st.markdown("**Transformed:**")
+                        QuestionPreview.render_single_question(transformed[0])
+                
+                st.divider()
+                
+                # All transformed
+                st.markdown("### All Transformed Questions:")
+                QuestionPreview.render_question_list(transformed)
+                
+                # Download
+                DownloadButton.create_json_download(
+                    transformed,
+                    "transformed_questions.json",
+                    "⬇️ Download Transformed Questions"
+                )
+                
+            except json.JSONDecodeError:
+                st.error("Failed to parse AI response. Try simpler instruction.")
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
+# =============================
+# MAIN APPLICATION
+# =============================
+
+def main():
+    st.set_page_config(
+        page_title="Question Engine MVP",
+        page_icon="📚",
+        layout="wide"
     )
-    st.session_state.engine_config = engine_config
-
-    st.markdown("---")
-    st.subheader("4️⃣ Export Questions")
-
-    questions = st.session_state.get("generated_questions", [])
-
-    if not questions:
-        st.info("Generate some questions first to enable export.")
-    else:
-        txt_data = questions_to_plain_text(questions)
-
-        st.download_button(
-            "📄 Download as TXT",
-            data=txt_data,
-            file_name="questions.txt",
-            mime="text/plain",
+    
+    st.title("📚 Exam Question Extraction & Generation Engine")
+    st.markdown("Upload PDFs to extract questions or generate new ones")
+    
+    # Sidebar
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        
+        api_key_input = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Enter API key or set OPENAI_API_KEY env var"
         )
-
-        # DOCX export
-        try:
-            docx_buffer = export_to_docx(questions)
-            st.download_button(
-                "📝 Download as DOCX",
-                data=docx_buffer,
-                file_name="questions.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        
+        model_name = st.selectbox(
+            "Model",
+            options=["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+            index=0
+        )
+        
+        st.divider()
+        st.markdown("### 📖 Guide")
+        st.markdown("""
+        **Part 1: Extract from PDF**
+        - Upload PDF with questions
+        - OCR + AI extraction
+        
+        **Part 2: Generate/Transform**
+        - Generate from text
+        - Transform existing questions
+        """)
+    
+    # Main tabs
+    tab1, tab2 = st.tabs(["📄 Part 1: Extract from PDF", "🎯 Part 2: Generate/Transform"])
+    
+    # =============================
+    # PART 1: PDF EXTRACTION (ORIGINAL)
+    # =============================
+    with tab1:
+        st.header("Part 1: Extract Questions from PDF")
+        st.info("Upload a PDF containing exam questions. OCR + AI extraction.")
+        
+        uploaded_file = st.file_uploader(
+            "Choose a PDF file",
+            type=["pdf"],
+            help="Upload PDF with exam questions"
+        )
+        
+        if uploaded_file is not None:
+            client = build_openai_client(api_key_input)
+            if client is None:
+                st.stop()
+            
+            engine_choice = st.radio(
+                "Extraction Engine",
+                ["Engine A (Default)", "Engine B (Alternative)"],
+                horizontal=True
             )
-        except Exception as e:
-            st.warning(f"DOCX export unavailable: {e}")
+            
+            system_prompt = ENGINE_A_PROMPT if "Engine A" in engine_choice else ENGINE_B_PROMPT
+            
+            if st.button("🚀 Extract Questions", type="primary"):
+                with st.spinner("Processing PDF..."):
+                    try:
+                        pdf_bytes = uploaded_file.read()
+                        images = pdf_to_images(pdf_bytes)
+                        
+                        st.info(f"Converted to {len(images)} images. Running OCR...")
+                        
+                        all_questions = []
+                        progress_bar = st.progress(0)
+                        
+                        for idx, img in enumerate(images):
+                            ocr_text = ocr_image_to_text(img)
+                            
+                            questions, _, elapsed = extract_questions_from_page(
+                                client, ocr_text, idx + 1, system_prompt, model_name
+                            )
+                            
+                            all_questions.extend(questions)
+                            progress_bar.progress((idx + 1) / len(images))
+                        
+                        st.success(f"✅ Extracted {len(all_questions)} questions from {len(images)} pages!")
+                        
+                        # Preview
+                        if all_questions:
+                            st.markdown("### Preview:")
+                            QuestionPreview.render_question_list(all_questions[:5], max_preview=5)
+                        
+                        # Download
+                        DownloadButton.create_json_download(
+                            all_questions,
+                            "extracted_questions.json",
+                            "⬇️ Download Extracted Questions"
+                        )
+                        
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+    
+    # =============================
+    # PART 2: GENERATE/TRANSFORM (REDESIGNED)
+    # =============================
+    with tab2:
+        st.header("Part 2: Generate or Transform Questions")
+        
+        # Build client
+        client = build_openai_client(api_key_input)
+        if client is None:
+            st.warning("⚠️ Please provide OpenAI API key in sidebar.")
+            st.stop()
+        
+        # Mode selection - Simple and clear
+        operation_mode = st.radio(
+            "Choose Operation Mode",
+            options=["Generate from Text", "Transform from JSON"],
+            horizontal=True,
+            help="Generate creates new questions from text. Transform modifies existing questions."
+        )
+        
+        st.divider()
+        
+        # Render appropriate flow
+        if operation_mode == "Generate from Text":
+            flow = GenerateFromTextFlow(client, model_name)
+            flow.render()
+        else:  # Transform from JSON
+            flow = TransformFromJSONFlow(client, model_name)
+            flow.render()
 
-        # PDF export
-        try:
-            pdf_buffer = export_to_pdf(questions)
-            st.download_button(
-                "📕 Download as PDF",
-                data=pdf_buffer,
-                file_name="questions.pdf",
-                mime="application/pdf",
-            )
-        except Exception as e:
-            st.warning(f"PDF export unavailable: {e}")
-
-
-st.markdown("---")
-st.caption("Made for internal question-generation pipelines · Plug in your own AI calls inside `build_structured_questions()`.\n")
+if __name__ == "__main__":
+    main()
