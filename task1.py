@@ -10,7 +10,7 @@ import requests
 from io import BytesIO
 from PIL import Image
 from openai import OpenAI
-from urllib.parse import urljoin, urlparse, unquote
+from urllib.parse import urljoin, urlparse, unquote, parse_qs
 
 # -------------------------------------------------
 # PAGE CONFIG
@@ -206,6 +206,9 @@ st.markdown("""
         grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
         gap: 1.5rem;
         padding: 1rem 0;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
     }
     
     .image-scorecard {
@@ -215,6 +218,7 @@ st.markdown("""
         box-shadow: 0 4px 20px rgba(0,0,0,0.08);
         transition: transform 0.3s ease, box-shadow 0.3s ease;
         border: 1px solid #e9ecef;
+        max-width: 100%;
     }
     
     .image-scorecard:hover {
@@ -373,6 +377,189 @@ st.markdown("""
         border-radius: 10px;
     }
     
+    /* Image-1 Decision Card Styles */
+    .image1-decision-card {
+        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+        border: 2px solid #e9ecef;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .image1-decision-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .image1-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.25rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    
+    .image1-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #1e3c72;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .image1-score-badge {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .score-circle {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 700;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .score-circle .score-num {
+        font-size: 1.8rem;
+        line-height: 1;
+    }
+    
+    .score-circle .score-label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        opacity: 0.9;
+    }
+    
+    .score-acceptable { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+    .score-needs-improvement { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .score-must-revamp { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); }
+    
+    .verdict-badge {
+        padding: 0.5rem 1.25rem;
+        border-radius: 25px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .verdict-acceptable {
+        background: #d4edda;
+        color: #155724;
+        border: 2px solid #28a745;
+    }
+    
+    .verdict-needs-improvement {
+        background: #fff3cd;
+        color: #856404;
+        border: 2px solid #ffc107;
+    }
+    
+    .verdict-must-revamp {
+        background: #f8d7da;
+        color: #721c24;
+        border: 2px solid #dc3545;
+    }
+    
+    .image1-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+    }
+    
+    @media (max-width: 768px) {
+        .image1-content {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    .image1-section {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 1rem;
+    }
+    
+    .image1-section-title {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .image1-issues-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .image1-issues-list li {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #e9ecef;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: #495057;
+    }
+    
+    .image1-issues-list li:last-child {
+        border-bottom: none;
+    }
+    
+    .issue-icon {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    
+    .action-icon {
+        color: #28a745;
+        font-weight: bold;
+    }
+    
+    .image1-impact {
+        background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+        border-left: 4px solid #667eea;
+        padding: 1rem;
+        border-radius: 0 12px 12px 0;
+        margin-top: 1rem;
+    }
+    
+    .image1-impact-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #667eea;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+    }
+    
+    .image1-impact-text {
+        font-size: 0.95rem;
+        color: #1e3c72;
+        line-height: 1.5;
+    }
+    
     /* Download button */
     .stDownloadButton > button {
         background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
@@ -450,6 +637,8 @@ if 'image_scorecards' not in st.session_state:
     st.session_state.image_scorecards = []
 if 'quick_summary' not in st.session_state:
     st.session_state.quick_summary = None
+if 'image1_conversion_scorecard' not in st.session_state:
+    st.session_state.image1_conversion_scorecard = None
 
 # -------------------------------------------------
 # API KEY INPUT
@@ -479,18 +668,94 @@ st.markdown("---")
 st.markdown("### 📥 Data Input")
 input_mode = st.radio(
     "Choose your preferred input method:",
-    ["🔗 URL Scraping (Auto)", "✍️ Manual Input (Recommended for Amazon)"],
+    ["📄 Upload HTML (Best)", "🔌 SerpApi (Recommended)", "🔗 URL Scraping (Auto)", "✍️ Manual Input"],
     horizontal=True,
     key="input_mode_radio",
-    help="URL Scraping auto-extracts product data. Manual Input gives you full control and bypasses anti-bot protection."
+    help="Upload HTML is 100% reliable. SerpApi is great for Amazon. URL Scraping may be blocked. Manual Input gives full control."
 )
 
-if input_mode == "🔗 URL Scraping (Auto)":
+# SerpApi Mode
+if input_mode == "📄 Upload HTML (Best)":
+    st.success("✅ **HTML Upload Mode** - 100% reliable! No anti-bot issues!")
+    
+    st.info("""
+    **How to use:**
+    1. Open the Amazon/Flipkart product page in your browser
+    2. Press **Ctrl+S** (or Right-click → Save As)
+    3. Save as "Webpage, Complete" or "HTML Only"
+    4. Upload the saved .html file below
+    """)
+    
+    html_col1, html_col2 = st.columns([2, 1])
+    with html_col1:
+        uploaded_html = st.file_uploader(
+            "📁 Upload HTML File",
+            type=["html", "htm"],
+            help="Upload the saved product page HTML file",
+            key="html_upload_input"
+        )
+    with html_col2:
+        html_platform = st.selectbox(
+            "🛒 Platform",
+            ["Amazon", "Flipkart"],
+            key="html_platform_select",
+            help="Select which platform this HTML is from"
+        )
+    
+    # Optional source URL for resolving relative image paths
+    html_source_url = st.text_input(
+        "🔗 Original URL (optional)",
+        placeholder="https://www.amazon.in/dp/XXXXXXXXXX",
+        help="If images don't load, paste the original URL here to help resolve image paths",
+        key="html_source_url"
+    )
+    
+    manual_mode = False
+    serpapi_mode = False
+    html_upload_mode = True
+    serpapi_key = None
+    product_url = None
+
+elif input_mode == "🔌 SerpApi (Recommended)":
+    st.success("✅ **SerpApi Mode** - Most reliable method for Amazon product data extraction!")
+    
+    serpapi_col1, serpapi_col2 = st.columns([2, 1])
+    with serpapi_col1:
+        serpapi_key = st.text_input(
+            "🔑 SerpApi API Key",
+            type="password",
+            placeholder="Enter your SerpApi key...",
+            help="Get your free API key at https://serpapi.com (100 free searches/month)",
+            key="serpapi_key_input"
+        )
+    with serpapi_col2:
+        st.markdown("[Get Free API Key →](https://serpapi.com/manage-api-key)")
+    
+    product_url = st.text_input(
+        "🔗 Paste Amazon Product URL",
+        placeholder="https://www.amazon.in/dp/XXXXXXXXXX",
+        key="serpapi_url_input"
+    )
+    manual_mode = False
+    serpapi_mode = True
+    html_upload_mode = False
+
+# URL Scraping Mode  
+elif input_mode == "🔗 URL Scraping (Auto)":
+    st.warning("⚠️ **Note:** Web scraping may be blocked by Amazon. Consider using SerpApi for better reliability.")
     product_url = st.text_input("🔗 Paste Amazon / Flipkart Product URL", key="product_url_input")
     manual_mode = False
+    serpapi_mode = False
+    serpapi_key = None
+    html_upload_mode = False
+
+# Manual Input Mode
 else:
     manual_mode = True
+    serpapi_mode = False
+    serpapi_key = None
     product_url = None
+    html_upload_mode = False
     
     st.info("💡 **Tip:** Copy product details from Amazon/Flipkart page and paste below. This bypasses anti-bot protection.")
     
@@ -819,78 +1084,252 @@ What's in Box: {product.get('whats_in_box', 'Unknown')}
     
     return scorecards
 
-def render_scorecard_html(scorecard):
-    """Render a single scorecard as HTML"""
+def evaluate_image1_for_conversion(client, image_url, product):
+    """
+    Evaluate Image-1 (Hero Image) for conversion optimization.
+    Returns a compact decision scorecard focused on CTR & conversion.
+    """
+    
+    product_context = f"""
+Product: {product.get('title', 'Unknown')}
+Brand: {product.get('brand', 'Unknown')}
+Category: {product.get('category', 'Unknown')}
+Target: Parents buying educational products for kids in India
+Platform: Amazon/Flipkart
+"""
+    
+    evaluation_prompt = f"""You are an Amazon CRO expert for KIDS educational products in India.
+
+Focus ONLY on Image-1 (Hero image).
+
+Assume:
+- Viewer is a parent
+- 2 seconds attention
+- Mobile-first
+- Highly competitive category
+
+PRODUCT CONTEXT:
+{product_context}
+
+TASK:
+Evaluate whether this Image-1 will WIN clicks on Amazon search results.
+
+Score it on these 5 dimensions (0-5 scale each):
+1. **Scroll-Stop Power** - Contrast, clarity, visual dominance on mobile thumbnail
+2. **Instant Understanding** - Can parent understand product + age group + use case in 2 seconds?
+3. **Trust & Authority** - Educational credibility, brand presence, professional look
+4. **Visual Cleanliness** - No clutter, noise, or confusion
+5. **Differentiation** - Why click THIS over the 20 other similar products?
+
+Be STRICT. Most images fail.
+
+SCORING RULES:
+- Overall Score = Average of 5 dimensions
+- ≥ 4.0 → ACCEPTABLE (No immediate change needed)
+- 3.0 – 3.9 → NEEDS IMPROVEMENT
+- < 3.0 → MUST REVAMP (High Priority)
+
+OUTPUT ONLY this JSON (no markdown, no explanation):
+{{
+    "scroll_stop_power": 0,
+    "instant_understanding": 0,
+    "trust_authority": 0,
+    "visual_cleanliness": 0,
+    "differentiation": 0,
+    "overall_score": 0.0,
+    "verdict": "ACCEPTABLE | NEEDS IMPROVEMENT | MUST REVAMP",
+    "top_issues": ["issue 1", "issue 2", "issue 3"],
+    "revamp_actions": ["action 1", "action 2", "action 3", "action 4"],
+    "expected_impact": "One sentence describing CTR/conversion improvement"
+}}"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": evaluation_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_url, "detail": "high"}
+                        }
+                    ]
+                }
+            ],
+            max_tokens=800,
+            temperature=0.1,
+            timeout=45
+        )
+        
+        result = response.choices[0].message.content.strip()
+        # Clean JSON if wrapped in markdown
+        if result.startswith("```"):
+            result = re.sub(r'^```json?\n?', '', result)
+            result = re.sub(r'\n?```$', '', result)
+        
+        scorecard = json.loads(result)
+        scorecard['image_url'] = image_url
+        
+        # Ensure verdict follows scoring rules
+        overall = scorecard.get('overall_score', 0)
+        if overall >= 4.0:
+            scorecard['verdict'] = 'ACCEPTABLE'
+        elif overall >= 3.0:
+            scorecard['verdict'] = 'NEEDS IMPROVEMENT'
+        else:
+            scorecard['verdict'] = 'MUST REVAMP'
+        
+        return scorecard
+        
+    except json.JSONDecodeError as e:
+        return {
+            "scroll_stop_power": 0,
+            "instant_understanding": 0,
+            "trust_authority": 0,
+            "visual_cleanliness": 0,
+            "differentiation": 0,
+            "overall_score": 0,
+            "verdict": "MUST REVAMP",
+            "top_issues": ["Failed to analyze image"],
+            "revamp_actions": ["Re-upload a clearer image for analysis"],
+            "expected_impact": "Unable to evaluate - please retry",
+            "error": f"JSON parse error: {str(e)}"
+        }
+    except Exception as e:
+        return {
+            "scroll_stop_power": 0,
+            "instant_understanding": 0,
+            "trust_authority": 0,
+            "visual_cleanliness": 0,
+            "differentiation": 0,
+            "overall_score": 0,
+            "verdict": "MUST REVAMP",
+            "top_issues": [f"Analysis failed: {str(e)[:50]}"],
+            "revamp_actions": ["Check image URL and retry"],
+            "expected_impact": "Unable to evaluate - please retry",
+            "error": str(e)
+        }
+
+def render_image1_scorecard_native(scorecard):
+    """Render Image-1 Decision Card using native Streamlit components"""
+    
+    overall_score = scorecard.get('overall_score', 0)
+    verdict = scorecard.get('verdict', 'MUST REVAMP')
+    
+    # Verdict styling
+    if verdict == 'ACCEPTABLE':
+        verdict_color = "green"
+        verdict_icon = "✅"
+    elif verdict == 'NEEDS IMPROVEMENT':
+        verdict_color = "orange"
+        verdict_icon = "⚠️"
+    else:
+        verdict_color = "red"
+        verdict_icon = "🚨"
+    
+    # Header with score and verdict
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.subheader("🎯 Image-1 Conversion Scorecard")
+    with col2:
+        st.metric("Overall Score", f"{overall_score:.1f}/5.0")
+    with col3:
+        if verdict == 'ACCEPTABLE':
+            st.success(f"{verdict_icon} {verdict}")
+        elif verdict == 'NEEDS IMPROVEMENT':
+            st.warning(f"{verdict_icon} {verdict}")
+        else:
+            st.error(f"{verdict_icon} {verdict}")
+    
+    # Dimension scores as progress bars
+    st.markdown("#### 📊 Dimension Scores")
+    dims = [
+        ("🎯 Scroll-Stop Power", scorecard.get('scroll_stop_power', 0)),
+        ("👁️ Instant Understanding", scorecard.get('instant_understanding', 0)),
+        ("🏆 Trust & Authority", scorecard.get('trust_authority', 0)),
+        ("✨ Visual Cleanliness", scorecard.get('visual_cleanliness', 0)),
+        ("🔥 Differentiation", scorecard.get('differentiation', 0))
+    ]
+    
+    for name, score in dims:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.progress(score / 5, text=name)
+        with col2:
+            st.markdown(f"**{score}/5**")
+    
+    # Issues and Actions in two columns
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### ❌ Top Issues")
+        for issue in scorecard.get('top_issues', [])[:3]:
+            st.markdown(f"• {issue}")
+        if not scorecard.get('top_issues'):
+            st.markdown("• No critical issues found")
+    
+    with col2:
+        st.markdown("#### 🔧 Revamp Actions")
+        for action in scorecard.get('revamp_actions', [])[:4]:
+            st.markdown(f"✓ {action}")
+        if not scorecard.get('revamp_actions'):
+            st.markdown("✓ No actions required")
+    
+    # Expected Impact
+    st.markdown("---")
+    st.info(f"**🎯 Expected Impact:** {scorecard.get('expected_impact', 'N/A')}")
+
+def render_single_scorecard_native(scorecard):
+    """Render a single image scorecard using native Streamlit components"""
     
     img_num = scorecard.get('image_number', 1)
     quality_score = scorecard.get('quality_score', 0)
     compliance_score = scorecard.get('compliance_score', 0)
     overall_score = round((quality_score + compliance_score) / 2, 1)
     
-    # Score class
-    score_class = "score-high" if overall_score >= 7 else "score-medium" if overall_score >= 5 else "score-low"
-    
-    # Quality badge
-    res_quality = scorecard.get('resolution_quality', 'unknown')
-    quality_class = "quality-high" if res_quality == "high" else "quality-medium" if res_quality == "medium" else "quality-low"
-    quality_emoji = "🟢" if res_quality == "high" else "🟡" if res_quality == "medium" else "🔴"
-    
-    # Build tags
-    found_tags = []
-    missing_tags = []
-    
-    for usp in scorecard.get('visible_usps', [])[:3]:
-        found_tags.append(f'<span class="scorecard-tag found">✓ {usp[:25]}{"..." if len(usp) > 25 else ""}</span>')
-    
-    for issue in scorecard.get('quality_issues', [])[:2]:
-        missing_tags.append(f'<span class="scorecard-tag missing">✗ {issue[:25]}{"..." if len(issue) > 25 else ""}</span>')
-    
-    for issue in scorecard.get('compliance_issues', [])[:2]:
-        missing_tags.append(f'<span class="scorecard-tag missing">⚠ {issue[:25]}{"..." if len(issue) > 25 else ""}</span>')
-    
-    tags_html = ''.join(found_tags + missing_tags) if (found_tags or missing_tags) else '<span class="scorecard-tag">No tags</span>'
-    
-    # Summary
-    summary = scorecard.get('summary', 'No analysis available')[:150]
-    if len(scorecard.get('summary', '')) > 150:
-        summary += "..."
-    
-    # Visible text preview
-    visible_text = scorecard.get('visible_text', [])
-    text_preview = ', '.join(visible_text[:3])[:60] + "..." if visible_text else "No text detected"
-    
-    return f'''
-    <div class="image-scorecard">
-        <div class="scorecard-image-wrap">
-            <img src="{scorecard.get('image_url', '')}" alt="Image {img_num}" onerror="this.src='https://via.placeholder.com/300x200?text=Image+{img_num}'">
-            <div class="scorecard-badge">Image {img_num}</div>
-            <div class="scorecard-score {score_class}">{overall_score}</div>
-        </div>
-        <div class="scorecard-body">
-            <div class="scorecard-title">
-                <span class="quality-indicator {quality_class}">{quality_emoji} {scorecard.get('dimensions', 'N/A')}</span>
-                &nbsp;|&nbsp;
-                <span style="color: #6c757d;">{scorecard.get('background_type', 'Unknown')} bg</span>
-            </div>
-            <div class="scorecard-summary">{summary}</div>
-            <div class="scorecard-tags">{tags_html}</div>
-            <div class="scorecard-metrics">
-                <div class="scorecard-metric">
-                    <div class="scorecard-metric-value">{quality_score}/10</div>
-                    <div class="scorecard-metric-label">Quality</div>
-                </div>
-                <div class="scorecard-metric">
-                    <div class="scorecard-metric-value">{compliance_score}/10</div>
-                    <div class="scorecard-metric-label">Compliance</div>
-                </div>
-                <div class="scorecard-metric">
-                    <div class="scorecard-metric-value">{len(scorecard.get('visible_usps', []))}</div>
-                    <div class="scorecard-metric-label">USPs Found</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    '''
+    # Container for each card
+    with st.container():
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            # Image
+            try:
+                st.image(scorecard.get('image_url', ''), caption=f"Image {img_num}", use_container_width=True)
+            except:
+                st.markdown(f"🖼️ Image {img_num}")
+        
+        with col2:
+            # Metrics row
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.metric("Quality", f"{quality_score}/10")
+            with m2:
+                st.metric("Compliance", f"{compliance_score}/10")
+            with m3:
+                st.metric("Overall", f"{overall_score}/10")
+            with m4:
+                res_quality = scorecard.get('resolution_quality', 'unknown')
+                quality_emoji = "🟢" if res_quality == "high" else "🟡" if res_quality == "medium" else "🔴"
+                st.metric("Resolution", f"{quality_emoji} {scorecard.get('dimensions', 'N/A')}")
+            
+            # Summary
+            summary = scorecard.get('summary', 'No analysis available')
+            st.markdown(f"**Summary:** {summary[:200]}{'...' if len(summary) > 200 else ''}")
+            
+            # USPs found
+            usps = scorecard.get('visible_usps', [])
+            if usps:
+                st.markdown("**USPs Found:** " + " • ".join([f"`{usp[:30]}`" for usp in usps[:3]]))
+            
+            # Issues
+            issues = scorecard.get('quality_issues', []) + scorecard.get('compliance_issues', [])
+            if issues:
+                st.markdown("**Issues:** " + " • ".join([f"⚠️ {issue[:30]}" for issue in issues[:3]]))
+        
+        st.markdown("---")
 
 def extract_amazon_images(soup, url):
     """Extract all product images from Amazon with multiple strategies"""
@@ -1109,6 +1548,93 @@ def extract_flipkart_images(soup, url):
             unique_images.append(img)
     
     return unique_images[:10]
+
+# -------------------------------------------------
+# PARSE UPLOADED HTML FILE
+# -------------------------------------------------
+def parse_uploaded_html(html_content: str, platform: str, source_url: str = None) -> dict:
+    """
+    Parse product data from an uploaded HTML file.
+    This is the most reliable method - 100% bypasses anti-bot protection.
+    
+    Args:
+        html_content: The raw HTML string from the uploaded file
+        platform: 'Amazon' or 'Flipkart'
+        source_url: Optional original URL to help resolve relative image paths
+    
+    Returns:
+        dict: Product data in the same format as other scraping functions
+    """
+    try:
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Determine the base URL for resolving relative paths
+        base_url = None
+        if source_url:
+            parsed = urlparse(source_url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+        elif platform == "Amazon":
+            base_url = "https://www.amazon.in"
+        elif platform == "Flipkart":
+            base_url = "https://www.flipkart.com"
+        
+        # Use the appropriate scraper based on platform
+        if platform == "Amazon":
+            product = scrape_amazon(soup, source_url or "uploaded_html")
+        elif platform == "Flipkart":
+            product = scrape_flipkart(soup, source_url or "uploaded_html")
+        else:
+            # Default to Amazon
+            product = scrape_amazon(soup, source_url or "uploaded_html")
+        
+        # Fix relative image URLs if we have a base URL
+        if base_url and product.get('images'):
+            fixed_images = []
+            for img_url in product['images']:
+                if img_url.startswith('//'):
+                    fixed_images.append('https:' + img_url)
+                elif img_url.startswith('/'):
+                    fixed_images.append(base_url + img_url)
+                elif not img_url.startswith('http'):
+                    fixed_images.append(urljoin(base_url, img_url))
+                else:
+                    fixed_images.append(img_url)
+            product['images'] = fixed_images
+        
+        # Mark the source
+        product['input_method'] = 'html_upload'
+        product['platform'] = platform
+        
+        # Validate we got meaningful data
+        if product.get('title') == 'NOT_FOUND' or not product.get('title'):
+            # Try additional extraction methods
+            # Look for any h1 tag as title
+            h1_tag = soup.find('h1')
+            if h1_tag:
+                product['title'] = h1_tag.get_text(strip=True)
+            
+            # Look for og:title meta tag
+            og_title = soup.find('meta', property='og:title')
+            if og_title and og_title.get('content'):
+                product['title'] = og_title['content']
+        
+        # Try to get images from og:image if none found
+        if not product.get('images') or len(product.get('images', [])) == 0:
+            og_images = soup.find_all('meta', property='og:image')
+            for og_img in og_images:
+                if og_img.get('content'):
+                    product.setdefault('images', []).append(og_img['content'])
+        
+        return product
+        
+    except Exception as e:
+        return {
+            "title": "SCRAPING_FAILED",
+            "error": f"Failed to parse HTML: {str(e)}",
+            "platform": platform,
+            "input_method": "html_upload",
+            "suggestion": "Please ensure you uploaded a complete product page HTML file."
+        }
 
 def scrape_amazon(soup, url):
     """Comprehensive Amazon scraper with multiple fallback selectors"""
@@ -1430,6 +1956,369 @@ def scrape_flipkart(soup, url):
     
     return data
 
+# -------------------------------------------------
+# SERPAPI AMAZON PRODUCT API INTEGRATION (ROBUST)
+# -------------------------------------------------
+
+def extract_asin_from_url(url: str) -> str:
+    """Extract ASIN from Amazon URL - handles all URL formats"""
+    if not url:
+        return None
+    
+    url = url.strip()
+    
+    # Pattern 1: /dp/ASIN (most common)
+    match = re.search(r'/dp/([A-Z0-9]{10})', url, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    
+    # Pattern 2: /gp/product/ASIN
+    match = re.search(r'/gp/product/([A-Z0-9]{10})', url, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    
+    # Pattern 3: /gp/aw/d/ASIN (mobile)
+    match = re.search(r'/gp/aw/d/([A-Z0-9]{10})', url, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    
+    # Pattern 4: /product/ASIN
+    match = re.search(r'/product/([A-Z0-9]{10})', url, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    
+    # Pattern 5: /ASIN/ standalone
+    match = re.search(r'/([A-Z0-9]{10})(?:/|\?|$)', url, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    
+    # Pattern 6: ASIN in query params
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    for key in ['asin', 'ASIN', 'product']:
+        if key in params:
+            return params[key][0].upper()
+    
+    return None
+
+def fetch_amazon_via_serpapi(url: str, serpapi_key: str) -> dict:
+    """
+    Fetch Amazon product data using SerpApi's Amazon Product API.
+    Robust implementation with multiple fallbacks and detailed error handling.
+    """
+    
+    # Validate inputs
+    if not serpapi_key or len(serpapi_key) < 10:
+        return {
+            "title": "SCRAPING_FAILED",
+            "error": "Invalid SerpApi key provided",
+            "suggestion": "Get a valid API key from https://serpapi.com"
+        }
+    
+    asin = extract_asin_from_url(url)
+    
+    if not asin:
+        return {
+            "title": "SCRAPING_FAILED",
+            "error": f"Could not extract ASIN from URL: {url[:100]}",
+            "suggestion": "Make sure URL contains /dp/XXXXXXXXXX or similar pattern"
+        }
+    
+    # Determine Amazon domain from URL
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc.lower()
+    
+    # Map domain to SerpApi amazon_domain parameter
+    domain_mapping = {
+        "www.amazon.in": "amazon.in",
+        "amazon.in": "amazon.in",
+        "www.amazon.com": "amazon.com",
+        "amazon.com": "amazon.com",
+        "www.amazon.co.uk": "amazon.co.uk",
+        "amazon.co.uk": "amazon.co.uk",
+        "www.amazon.de": "amazon.de",
+        "www.amazon.fr": "amazon.fr",
+        "www.amazon.es": "amazon.es",
+        "www.amazon.it": "amazon.it",
+        "www.amazon.ca": "amazon.ca",
+        "www.amazon.com.au": "amazon.com.au",
+    }
+    
+    amazon_domain = domain_mapping.get(domain, "amazon.in")
+    
+    # SerpApi endpoint
+    serpapi_url = "https://serpapi.com/search.json"
+    
+    params = {
+        "engine": "amazon_product",
+        "asin": asin,
+        "amazon_domain": amazon_domain,
+        "api_key": serpapi_key,
+        "no_cache": "false"  # Use cache for faster responses
+    }
+    
+    try:
+        # Make request with timeout and retries
+        for attempt in range(3):
+            try:
+                response = requests.get(serpapi_url, params=params, timeout=45)
+                break
+            except requests.exceptions.Timeout:
+                if attempt == 2:
+                    raise
+                time.sleep(2)
+        
+        # Check HTTP status
+        if response.status_code == 401:
+            return {
+                "title": "SCRAPING_FAILED",
+                "error": "Invalid SerpApi API key (401 Unauthorized)",
+                "suggestion": "Check your API key at https://serpapi.com/manage-api-key"
+            }
+        elif response.status_code == 429:
+            return {
+                "title": "SCRAPING_FAILED",
+                "error": "SerpApi rate limit exceeded (429)",
+                "suggestion": "Wait a moment or upgrade your SerpApi plan"
+            }
+        elif response.status_code != 200:
+            return {
+                "title": "SCRAPING_FAILED",
+                "error": f"SerpApi returned status {response.status_code}",
+                "suggestion": "Try again or use Manual Input",
+                "response_text": response.text[:500]
+            }
+        
+        data = response.json()
+        
+        # Check for SerpApi-level errors
+        if "error" in data:
+            return {
+                "title": "SCRAPING_FAILED",
+                "error": f"SerpApi error: {data.get('error', 'Unknown')}",
+                "suggestion": "Check your API key or try a different product"
+            }
+        
+        # Check if product was found
+        if not data.get("title") and not data.get("product_results"):
+            return {
+                "title": "SCRAPING_FAILED",
+                "error": f"Product not found for ASIN: {asin}",
+                "suggestion": "Check if the product exists or try Manual Input",
+                "debug_info": {"asin": asin, "domain": amazon_domain}
+            }
+        
+        # Parse SerpApi response - handle various response structures
+        product_info = data.get("product_information", {})
+        product_results = data.get("product_results", {})
+        specifications = data.get("specifications", [])
+        
+        # === EXTRACT IMAGES (Multiple sources) ===
+        images = []
+        
+        # Source 1: images array
+        if "images" in data:
+            img_list = data["images"]
+            if isinstance(img_list, list):
+                for img in img_list:
+                    if isinstance(img, dict) and img.get("link"):
+                        images.append(img["link"])
+                    elif isinstance(img, str):
+                        images.append(img)
+        
+        # Source 2: main_image
+        main_img = data.get("main_image")
+        if main_img:
+            if isinstance(main_img, str) and main_img not in images:
+                images.insert(0, main_img)
+            elif isinstance(main_img, dict) and main_img.get("link") and main_img["link"] not in images:
+                images.insert(0, main_img["link"])
+        
+        # Source 3: product_results images
+        if product_results.get("images"):
+            for img in product_results["images"]:
+                if isinstance(img, dict) and img.get("link") and img["link"] not in images:
+                    images.append(img["link"])
+                elif isinstance(img, str) and img not in images:
+                    images.append(img)
+        
+        # Source 4: thumbnail/image fields
+        for key in ["thumbnail", "image", "primary_image"]:
+            if data.get(key) and data[key] not in images:
+                images.append(data[key])
+        
+        # === EXTRACT BULLET POINTS/FEATURES ===
+        bullets = []
+        
+        # Source 1: feature_bullets
+        if data.get("feature_bullets"):
+            fb = data["feature_bullets"]
+            if isinstance(fb, list):
+                bullets.extend(fb)
+            elif isinstance(fb, str):
+                bullets.append(fb)
+        
+        # Source 2: about_item / about_this_item
+        for key in ["about_item", "about_this_item", "features"]:
+            if data.get(key) and not bullets:
+                items = data[key]
+                if isinstance(items, list):
+                    bullets.extend(items)
+                elif isinstance(items, str):
+                    bullets.append(items)
+        
+        # Source 3: feature_bullets_flat
+        if data.get("feature_bullets_flat") and not bullets:
+            bullets = [data["feature_bullets_flat"]]
+        
+        # === EXTRACT DESCRIPTION ===
+        description = ""
+        for key in ["description", "product_description", "editorial_reviews"]:
+            if data.get(key):
+                desc = data[key]
+                if isinstance(desc, str):
+                    description = desc
+                    break
+                elif isinstance(desc, list) and desc:
+                    description = " ".join(str(d) for d in desc)
+                    break
+        
+        # === EXTRACT REVIEWS ===
+        reviews = []
+        if data.get("top_reviews"):
+            for review in data["top_reviews"][:5]:
+                review_text = review.get("body", review.get("text", review.get("review", "")))
+                if review_text:
+                    reviews.append(review_text)
+        
+        # === EXTRACT RATING ===
+        rating = "NOT_FOUND"
+        rating_value = data.get("rating")
+        if rating_value:
+            rating = f"{rating_value} out of 5"
+        elif product_results.get("rating"):
+            rating = f"{product_results['rating']} out of 5"
+        
+        # === EXTRACT PRICE ===
+        price = "NOT_FOUND"
+        
+        # Try multiple price sources
+        price_sources = [
+            data.get("buybox", {}).get("price"),
+            data.get("price"),
+            product_results.get("price"),
+            data.get("buybox", {}).get("rrp"),
+        ]
+        
+        for price_data in price_sources:
+            if price_data:
+                if isinstance(price_data, dict):
+                    price = price_data.get("raw", price_data.get("value", price_data.get("current", "")))
+                else:
+                    price = str(price_data)
+                if price and price != "NOT_FOUND":
+                    break
+        
+        # === EXTRACT BRAND ===
+        brand = "NOT_FOUND"
+        for key in ["brand", "manufacturer", "by"]:
+            if product_info.get(key):
+                brand = product_info[key]
+                break
+            elif data.get(key):
+                brand = data[key]
+                break
+        
+        # === EXTRACT CATEGORY ===
+        category = "NOT_FOUND"
+        if data.get("categories_flat"):
+            category = data["categories_flat"]
+        elif data.get("categories"):
+            cats = data["categories"]
+            if isinstance(cats, list):
+                cat_names = [c.get("name", c) if isinstance(c, dict) else str(c) for c in cats]
+                category = " > ".join(cat_names)
+        elif product_info.get("department"):
+            category = product_info["department"]
+        
+        # === EXTRACT WHAT'S IN BOX ===
+        whats_in_box = "NOT_FOUND"
+        for key in ["whats_in_the_box", "included_components", "package_contents", "in_the_box"]:
+            if product_info.get(key):
+                whats_in_box = product_info[key]
+                break
+        
+        # === EXTRACT REVIEWS COUNT ===
+        review_count = "NOT_FOUND"
+        for key in ["ratings_total", "reviews_total", "reviews_count", "rating_count"]:
+            if data.get(key):
+                review_count = str(data[key])
+                break
+        
+        # === BUILD FINAL PRODUCT DICT ===
+        product = {
+            "platform": "Amazon",
+            "url": url,
+            "asin": asin,
+            "title": data.get("title", product_results.get("title", "NOT_FOUND")),
+            "brand": brand,
+            "price": price,
+            "rating": rating,
+            "review_count": review_count,
+            "bullets": bullets if bullets else [],
+            "description": description if description else "NOT_FOUND",
+            "whats_in_box": whats_in_box,
+            "product_details": product_info if product_info else {},
+            "specifications": specifications,
+            "reviews": reviews,
+            "images": images,
+            "category": category,
+            "input_method": "serpapi",
+            "serpapi_raw": data  # Keep for debugging
+        }
+        
+        # Validate we got meaningful data
+        if product["title"] == "NOT_FOUND" and not images and not bullets:
+            return {
+                "title": "SCRAPING_FAILED",
+                "error": "SerpApi returned empty product data",
+                "suggestion": "The product may be unavailable. Try Manual Input.",
+                "debug_info": {"asin": asin, "domain": amazon_domain, "raw_keys": list(data.keys())}
+            }
+        
+        return product
+        
+    except requests.exceptions.Timeout:
+        return {
+            "title": "SCRAPING_FAILED",
+            "error": "SerpApi request timed out after 45 seconds",
+            "suggestion": "Check your internet connection or try again"
+        }
+    except requests.exceptions.ConnectionError as e:
+        return {
+            "title": "SCRAPING_FAILED",
+            "error": f"Connection error: {str(e)[:100]}",
+            "suggestion": "Check your internet connection"
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            "title": "SCRAPING_FAILED",
+            "error": f"Request failed: {str(e)[:100]}",
+            "suggestion": "Try again or use Manual Input"
+        }
+    except json.JSONDecodeError as e:
+        return {
+            "title": "SCRAPING_FAILED",
+            "error": f"Invalid JSON response: {str(e)[:100]}",
+            "suggestion": "SerpApi returned invalid data. Try again."
+        }
+    except Exception as e:
+        return {
+            "title": "SCRAPING_FAILED",
+            "error": f"Unexpected error: {type(e).__name__}: {str(e)[:100]}",
+            "suggestion": "Try Manual Input mode"
+        }
+
 def scrape_product(url: str, max_retries: int = 3) -> dict:
     """Main scraping function with retry logic and comprehensive extraction"""
     
@@ -1602,9 +2491,13 @@ def create_manual_product_data(platform, title, brand, price, rating, category, 
     }
 
 # -------------------------------------------------
-# IMAGE-FOCUSED SEO PROMPT (CONCISE OUTPUT)
+# EXAM BOOK LISTING IMAGE AUDIT SYSTEM - STRICT AUDIT PROMPT
 # -------------------------------------------------
 def image_seo_prompt(product: dict) -> str:
+    """
+    Generates a STRICT Image Audit prompt for Exam Books/Educational Products.
+    Output: What's Good, What's Missing, What Needs Change, Final Verdict.
+    """
     # Format bullets/highlights
     bullets_text = "\n".join([f"  • {b}" for b in product.get('bullets', [])]) or "NOT_FOUND"
     
@@ -1622,87 +2515,171 @@ def image_seo_prompt(product: dict) -> str:
     # Get what's in box
     whats_in_box = product.get('whats_in_box', 'NOT_FOUND')
     
+    # Calculate character count for title
+    title = product.get('title', 'NOT_FOUND')
+    title_chars = len(title) if title != 'NOT_FOUND' else 0
+    
     return f"""
-You are a senior eCommerce SEO Image Strategist for Amazon India and Flipkart India.
-Analyze the product listing and provide a CONCISE, ACTION-ORIENTED report.
+# EXAM BOOK LISTING IMAGE AUDIT SYSTEM - ULTRA STRICT MODE
+
+## YOUR ROLE
+You are an **UNFORGIVING Senior Amazon/Flipkart Listing Auditor** specializing in Educational Products & Exam Preparation Books for Indian market.
+
+You have audited 10,000+ listings. You know EXACTLY what sells and what fails. You are NOT here to be nice.
+
+## STRICT AUDIT CRITERIA
+
+### IMAGE-1 (HERO/MAIN IMAGE) - MOST CRITICAL
+**Amazon India Requirements:**
+- Pure WHITE background (RGB 255,255,255) - NO exceptions
+- Product must fill 85% of frame - NO more, NO less
+- ZERO text, graphics, watermarks, badges, or overlays
+- All included items MUST be visible (books, CDs, booklets)
+- Accurate representation - show EXACT what customer receives
+- High resolution (minimum 1000x1000px, ideally 2000x2000px)
+- Professional studio lighting, no harsh shadows
+- 45-degree angle for depth, or front-facing for book covers
+
+**INSTANT FAIL CONDITIONS for Image-1:**
+- Any colored/gradient/lifestyle background
+- Text overlays ("Bestseller", "New Edition", etc.)
+- Promotional badges or stickers
+- Missing items from the combo/set
+- Blurry or pixelated image
+- Product cut off or too small
+
+### IMAGE 2-7 (SECONDARY IMAGES) - SUPPORTING CONVERSION
+**Must Have (in order of priority):**
+1. **Contents Spread** - Flat lay of ALL included items with counts
+2. **Inside Pages/Quality** - Show page quality, print clarity, binding
+3. **Table of Contents** - What topics are covered
+4. **USP Infographic** - Key benefits (can have text overlays)
+5. **Size/Dimensions** - Show scale with common object
+6. **Comparison Chart** - Why choose this over competitors
+7. **Trust/Social Proof** - Reviews, ratings (if verifiable)
+
+### EXAM BOOK SPECIFIC REQUIREMENTS
+**Must Show:**
+- Target exam clearly (JEE/NEET/Board/UPSC etc.)
+- Class/Grade applicability (9th, 10th, 11th, 12th)
+- Edition year (Latest 2024/2025)
+- Language (English/Hindi/Bilingual)
+- Number of books/items in combo
+- Page count if mentioned
+- Author/Publisher credibility
+
+**Trust Killers to Flag:**
+- Stock photos instead of actual product
+- Misleading item counts
+- Wrong edition shown
+- Missing syllabus coverage info
+- No sample pages visible
+- Generic/template images
 
 ================================================================================
-PRODUCT DATA
+PRODUCT DATA TO AUDIT
 ================================================================================
-PLATFORM: {product.get('platform', 'Unknown')}
-TITLE: {product.get('title', 'NOT_FOUND')}
-BRAND: {product.get('brand', 'NOT_FOUND')}
-PRICE: {product.get('price', 'NOT_FOUND')}
-RATING: {product.get('rating', 'NOT_FOUND')}
-CATEGORY: {product.get('category', 'NOT_FOUND')}
 
-BULLETS:
+**PLATFORM**: {product.get('platform', 'Unknown')}
+**TITLE**: {title} ({title_chars} characters)
+**BRAND**: {product.get('brand', 'NOT_FOUND')}
+**PRICE**: {product.get('price', 'NOT_FOUND')}
+**RATING**: {product.get('rating', 'NOT_FOUND')}
+**CATEGORY**: {product.get('category', 'NOT_FOUND')}
+
+**BULLET POINTS / KEY FEATURES**:
 {bullets_text}
 
-DESCRIPTION:
+**PRODUCT DESCRIPTION**:
 {product.get('description', 'NOT_FOUND')}
 
-WHAT'S IN BOX:
+**WHAT'S IN THE BOX**:
 {whats_in_box}
 
-PRODUCT DETAILS:
+**PRODUCT DETAILS/SPECIFICATIONS**:
 {details_text}
 
-CURRENT IMAGES:
+**CURRENT IMAGES** ({len(images_list)} images):
 {images_text}
 
-REVIEWS:
+**CUSTOMER REVIEWS**:
 {reviews_text}
 
 ================================================================================
-OUTPUT FORMAT (Keep each section SHORT and ACTIONABLE)
+OUTPUT FORMAT - STRICT COMPLIANCE REQUIRED
 ================================================================================
 
-## 🎯 QUICK SUMMARY (3 sentences max)
-[Product type, target audience, key value proposition]
-
-## 📋 USP MAP (Table format, max 6 rows)
-| USP | Source | Must Show? |
-|-----|--------|------------|
-
-## 🖼️ IMAGE 1 SCORE: X/10
-**Quick verdict:** [One sentence]
-**Top 3 issues:**
-1. [Issue + Fix]
-2. [Issue + Fix]  
-3. [Issue + Fix]
-
-## ⚠️ TOP 5 GAPS (Priority order)
-1. **[Gap]** → [One-line fix]
-2. **[Gap]** → [One-line fix]
-3. **[Gap]** → [One-line fix]
-4. **[Gap]** → [One-line fix]
-5. **[Gap]** → [One-line fix]
-
-## 🛒 AMAZON IMAGE PROMPTS (Concise)
-
-### Image 1 - Hero
-**Goal:** [One line]
-**Composition:** [One line]
-**Must show:** [Comma-separated list]
-**Avoid:** [Comma-separated list]
-
-### Image 2 - Contents
-**Goal:** [One line]
-**Must show:** [Comma-separated list]
-
-### Image 3 - Benefits
-**Goal:** [One line]
-**Must show:** [Comma-separated list]
-
-### Image 4-7
-[Brief 2-line description for each]
-
-## 🛍️ FLIPKART IMAGE PROMPTS (Concise)
-[Same format as Amazon, highlight QC differences only]
+Analyze the listing and provide output in EXACTLY this format. Be BRUTAL and SPECIFIC.
 
 ---
-Keep EVERYTHING concise. No verbose explanations. Bullet points preferred.
+
+# 🔍 LISTING IMAGE AUDIT REPORT
+
+**Product**: {title[:60]}...
+**Platform**: {product.get('platform', 'Unknown')} | **Category**: {product.get('category', 'Unknown')}
+**Audit Date**: {time.strftime('%Y-%m-%d')}
+
+---
+
+## ✅ WHAT'S GOOD
+(List ONLY genuinely positive aspects. If nothing is good, say "Nothing meets acceptable standards")
+
+- [Positive point 1 - be specific]
+- [Positive point 2 - be specific]
+- [Positive point 3 - be specific]
+- (Add more if genuinely present)
+
+---
+
+## ❌ WHAT'S MISSING
+(List ALL missing elements that SHOULD be present. Be exhaustive.)
+
+**Image-1 Issues:**
+- [Missing element 1 - why it matters]
+- [Missing element 2 - why it matters]
+
+**Secondary Images Missing:**
+- [Missing image type 1 - impact on conversion]
+- [Missing image type 2 - impact on conversion]
+
+**Information Gaps:**
+- [Missing info 1 - what buyer can't determine]
+- [Missing info 2 - what buyer can't determine]
+
+---
+
+## ⚠️ WHAT MIGHT NEED TO CHANGE
+(List elements that exist but need improvement. Be specific about HOW to fix.)
+
+**Image-1 Changes Required:**
+- [Issue → Specific fix required]
+- [Issue → Specific fix required]
+
+**Secondary Image Improvements:**
+- [Image X: Current problem → What to do instead]
+- [Image X: Current problem → What to do instead]
+
+**Copy/Text Improvements:**
+- [Current issue → Recommended change]
+
+**Compliance Fixes:**
+- [Violation → How to fix for Amazon/Flipkart compliance]
+
+---
+
+## 🎯 FINAL VERDICT
+
+**[ONE LINE VERDICT - Be direct and actionable]**
+
+Examples of acceptable verdicts:
+- "🔴 REJECT: Image-1 has text overlay + wrong background - reshoot immediately before running ads"
+- "🟡 REVISE: Listing is 60% there but missing contents spread + inside pages - add 2-3 images"
+- "🟢 ACCEPTABLE: Minor tweaks needed but listing can convert - focus on adding size comparison"
+- "🔴 CRITICAL: Hero image shows wrong product count - misleading customers, fix ASAP"
+
+---
+
+END OF AUDIT
 """
 
 # -------------------------------------------------
@@ -2082,7 +3059,7 @@ CONTENT:
 # Handle the analyze button click - store results in session state
 if analyze_btn:
     if not user_api_key:
-        st.error("API key is required.")
+        st.error("OpenAI API key is required.")
         st.stop()
 
     # Handle Manual Input Mode
@@ -2109,6 +3086,72 @@ if analyze_btn:
         st.session_state.product = product
         st.success("✅ Manual data processed successfully!")
     
+    # Handle SerpApi Mode
+    elif serpapi_mode:
+        if not serpapi_key:
+            st.error("SerpApi API key is required. Get one free at https://serpapi.com")
+            st.stop()
+        if not product_url:
+            st.error("Please provide an Amazon product URL.")
+            st.stop()
+        
+        with st.spinner("🔌 Fetching product data via SerpApi..."):
+            product = fetch_amazon_via_serpapi(product_url, serpapi_key)
+        
+        # Check for errors
+        if product.get("title") == "SCRAPING_FAILED":
+            st.error(f"❌ SerpApi Error: {product.get('error', 'Unknown error')}")
+            if product.get('suggestion'):
+                st.warning(f"💡 **Suggestion:** {product['suggestion']}")
+            if product.get('debug_info') or product.get('response_text'):
+                with st.expander("🔧 Debug Info"):
+                    if product.get('debug_info'):
+                        st.json(product['debug_info'])
+                    if product.get('response_text'):
+                        st.code(product['response_text'][:1000])
+            st.info("💡 **Alternative:** Try Manual Input mode - copy product details from Amazon page directly.")
+            st.stop()
+        
+        # Store in session state
+        st.session_state.product = product
+        st.success(f"✅ Product data fetched successfully via SerpApi! Found {len(product.get('images', []))} images.")
+    
+    # Handle HTML Upload Mode
+    elif html_upload_mode:
+        if not uploaded_html:
+            st.error("Please upload an HTML file.")
+            st.stop()
+        
+        with st.spinner("📄 Parsing uploaded HTML file..."):
+            try:
+                # Read the uploaded file
+                html_content = uploaded_html.read().decode('utf-8', errors='replace')
+                
+                # Parse the HTML
+                product = parse_uploaded_html(
+                    html_content=html_content,
+                    platform=html_platform,
+                    source_url=html_source_url if html_source_url else None
+                )
+            except Exception as e:
+                product = {
+                    "title": "SCRAPING_FAILED",
+                    "error": f"Failed to read HTML file: {str(e)}",
+                    "platform": html_platform
+                }
+        
+        # Check for errors
+        if product.get("title") == "SCRAPING_FAILED":
+            st.error(f"❌ Failed to parse HTML: {product.get('error', 'Unknown error')}")
+            if product.get('suggestion'):
+                st.warning(f"💡 **Suggestion:** {product['suggestion']}")
+            st.info("💡 **Tips:**\n- Make sure the HTML file is from a product page\n- Try saving as 'Webpage, Complete' instead of 'HTML Only'\n- Use the Manual Input mode if issues persist")
+            st.stop()
+        
+        # Store in session state
+        st.session_state.product = product
+        st.success(f"✅ HTML parsed successfully! Found {len(product.get('images', []))} images.")
+    
     # Handle URL Scraping Mode
     else:
         if not product_url:
@@ -2126,7 +3169,7 @@ if analyze_btn:
             if product.get('methods_tried'):
                 with st.expander("🔧 Debug Info"):
                     st.write("Methods attempted:", product['methods_tried'])
-            st.info("👆 **Try using 'Manual Input' mode** - it works 100% of the time! Just copy the product details from the Amazon/Flipkart page.")
+            st.info("👆 **Try using SerpApi or Manual Input mode** for better reliability!")
             st.stop()
         
         # Store in session state
@@ -2160,6 +3203,20 @@ if analyze_btn:
             except Exception as e:
                 st.warning(f"Could not generate image scorecards: {str(e)}")
                 st.session_state.image_scorecards = []
+    
+    # Generate Image-1 Conversion Scorecard (Priority Analysis)
+    if st.session_state.product.get('images'):
+        with st.spinner("🎯 Evaluating Image-1 for conversion optimization..."):
+            try:
+                image1_url = st.session_state.product['images'][0]
+                st.session_state.image1_conversion_scorecard = evaluate_image1_for_conversion(
+                    client,
+                    image1_url,
+                    st.session_state.product
+                )
+            except Exception as e:
+                st.warning(f"Could not evaluate Image-1: {str(e)}")
+                st.session_state.image1_conversion_scorecard = None
     
     # Generate Quick Summary
     try:
@@ -2233,58 +3290,61 @@ if st.session_state.analysis_done and st.session_state.product:
     st.markdown("---")
     
     # =========================================================
-    # QUICK SUMMARY SECTION (NEW - Concise Overview)
+    # QUICK SUMMARY SECTION
     # =========================================================
     if st.session_state.quick_summary:
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    padding: 1.5rem; border-radius: 12px; margin-bottom: 1.5rem;">
-            <h3 style="color: white; margin: 0 0 1rem 0;">⚡ Quick Summary</h3>
-            <div style="color: #e8e8e8; font-size: 1rem; line-height: 1.6;">
-        """, unsafe_allow_html=True)
-        st.markdown(st.session_state.quick_summary)
-        st.markdown("</div></div>", unsafe_allow_html=True)
+        with st.container():
+            st.markdown("### ⚡ Quick Summary")
+            st.info(st.session_state.quick_summary)
+    
+    # =========================================================
+    # IMAGE-1 CONVERSION SCORECARD (PRIORITY - Above All)
+    # =========================================================
+    if st.session_state.image1_conversion_scorecard:
+        scorecard = st.session_state.image1_conversion_scorecard
+        
+        with st.container(border=True):
+            # Render using native Streamlit components
+            render_image1_scorecard_native(scorecard)
+            
+            # Show Image-1 preview
+            if scorecard.get('image_url') and product.get('images'):
+                with st.expander("👁️ View Image-1 (Hero Image)", expanded=False):
+                    try:
+                        st.image(scorecard['image_url'], caption="Current Image-1", use_container_width=True)
+                    except:
+                        st.markdown(f"[View Image-1]({scorecard['image_url']})")
+            
+            # Download JSON scorecard
+            scorecard_json = json.dumps(scorecard, indent=2)
+            st.download_button(
+                label="📥 Download Image-1 Scorecard (JSON)",
+                data=scorecard_json,
+                file_name="image1_conversion_scorecard.json",
+                mime="application/json",
+                key="download_image1_scorecard"
+            )
+        
+        st.markdown("---")
     
     # Display scraped/input data in organized sections
-    st.markdown('<p class="section-header">📦 Product Data Extracted</p>', unsafe_allow_html=True)
+    st.subheader("📦 Product Data Extracted")
     
-    # Product metrics in card layout
+    # Product metrics in card layout using native metrics
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Platform</div>
-            <div class="metric-value">{product.get('platform', 'Unknown')}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric("Platform", product.get('platform', 'Unknown'))
     
     with col2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Price</div>
-            <div class="metric-value">{product.get('price', 'N/A')}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric("Price", product.get('price', 'N/A'))
     
     with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Rating</div>
-            <div class="metric-value">{product.get('rating', 'N/A')}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric("Rating", product.get('rating', 'N/A'))
     
     with col4:
         input_method = "✍️ Manual" if product.get('input_method') == 'manual' else "🔗 Scraped"
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Input Method</div>
-            <div class="metric-value">{input_method}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
+        st.metric("Input Method", input_method)
     
     # Product title and brand
     col1, col2 = st.columns([2, 1])
@@ -2321,10 +3381,10 @@ if st.session_state.analysis_done and st.session_state.product:
     st.markdown("---")
     
     # =========================================================
-    # IMAGE SCORECARDS SECTION (NEW - Beautiful Cards)
+    # IMAGE SCORECARDS SECTION (Native Streamlit Components)
     # =========================================================
     if st.session_state.image_scorecards:
-        st.markdown('<p class="section-header">🎴 Image Analysis Scorecards</p>', unsafe_allow_html=True)
+        st.subheader("🎴 Image Analysis Scorecards")
         
         # Calculate aggregate stats
         total_images = len(st.session_state.image_scorecards)
@@ -2336,67 +3396,38 @@ if st.session_state.analysis_done and st.session_state.product:
         # Aggregate stats row
         stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
         with stat_col1:
-            st.metric("📊 Avg Quality", f"{avg_quality:.1f}/10", delta=None)
+            st.metric("📊 Avg Quality", f"{avg_quality:.1f}/10")
         with stat_col2:
-            st.metric("✅ Avg Compliance", f"{avg_compliance:.1f}/10", delta=None)
+            st.metric("✅ Avg Compliance", f"{avg_compliance:.1f}/10")
         with stat_col3:
-            st.metric("✨ USPs Found", total_usps, delta=None)
+            st.metric("✨ USPs Found", total_usps)
         with stat_col4:
-            st.metric("🖼️ High-Res", f"{high_res_count}/{total_images}", delta=None)
+            st.metric("🖼️ High-Res", f"{high_res_count}/{total_images}")
         
-        st.markdown("""
-        <p style="color: #6c757d; margin: 1rem 0;">
-            Each image analyzed with AI Vision. Scores based on quality, compliance & USP coverage.
-        </p>
-        """, unsafe_allow_html=True)
+        st.caption("Each image analyzed with AI Vision. Scores based on quality, compliance & USP coverage.")
         
-        # Render scorecards in a grid
-        scorecards_html = '<div class="scorecard-container">'
-        for scorecard in st.session_state.image_scorecards:
-            scorecards_html += render_scorecard_html(scorecard)
-        scorecards_html += '</div>'
+        # Create tabs for different views
+        tab_cards, tab_raw = st.tabs(["📊 Image Analysis", "📄 Export Data"])
         
-        st.markdown(scorecards_html, unsafe_allow_html=True)
-        
-        # Detailed view for each scorecard
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("📊 Detailed Image Analysis", expanded=False):
+        with tab_cards:
+            # Render each scorecard using native components
             for scorecard in st.session_state.image_scorecards:
-                st.markdown(f"### Image {scorecard.get('image_number', '?')}")
-                
-                col1, col2 = st.columns([1, 2])
-                
-                with col1:
-                    try:
-                        st.image(scorecard.get('image_url', ''), use_container_width=True)
-                    except:
-                        st.markdown(f"[View Image]({scorecard.get('image_url', '')})")
-                
-                with col2:
-                    st.markdown(f"**📐 Resolution:** {scorecard.get('dimensions', 'N/A')}")
-                    st.markdown(f"**🎯 Quality Score:** {scorecard.get('quality_score', 0)}/10")
-                    st.markdown(f"**✅ Compliance Score:** {scorecard.get('compliance_score', 0)}/10")
-                    st.markdown(f"**🖼️ Background:** {scorecard.get('background_type', 'Unknown')}")
-                    
-                    if scorecard.get('visible_text'):
-                        st.markdown("**📝 Visible Text:**")
-                        for text in scorecard.get('visible_text', [])[:5]:
-                            st.markdown(f"• {text}")
-                    
-                    if scorecard.get('visible_usps'):
-                        st.markdown("**✨ USPs Shown:**")
-                        for usp in scorecard.get('visible_usps', []):
-                            st.markdown(f"• {usp}")
-                    
-                    if scorecard.get('ports_connectors'):
-                        st.markdown(f"**🔌 Ports/Connectors:** {', '.join(scorecard.get('ports_connectors', []))}")
-                    
-                    if scorecard.get('quality_issues'):
-                        st.markdown("**⚠️ Issues:**")
-                        for issue in scorecard.get('quality_issues', []):
-                            st.markdown(f"• {issue}")
-                
-                st.markdown("---")
+                with st.container(border=True):
+                    render_single_scorecard_native(scorecard)
+        
+        with tab_raw:
+            # JSON export option
+            st.markdown("### 📥 Export Scorecards Data")
+            scorecards_json = json.dumps(st.session_state.image_scorecards, indent=2, default=str)
+            st.download_button(
+                label="Download All Scorecards (JSON)",
+                data=scorecards_json,
+                file_name="image_scorecards.json",
+                mime="application/json",
+                key="download_all_scorecards"
+            )
+            with st.expander("View Raw JSON Data"):
+                st.json(st.session_state.image_scorecards)
     
     # Display product images (HIGH RESOLUTION) - simplified view
     if product.get('images'):
@@ -2435,19 +3466,18 @@ if st.session_state.analysis_done and st.session_state.product:
     # DISPLAY AI ANALYSIS (Collapsible for concise view)
     # =========================================================
     if st.session_state.ai_response:
-        st.markdown('<p class="section-header">📐 AI Image Strategy Analysis</p>', unsafe_allow_html=True)
+        st.subheader("� Image Audit Report")
         
-        # Display in an expander since it's longer - users can expand if they want details
-        with st.expander("📋 Full Strategy Report", expanded=True):
-            st.markdown(st.session_state.ai_response)
+        # Display the audit report directly - it's now concise
+        st.markdown(st.session_state.ai_response)
         
         # Download option for the analysis
         col1, col2 = st.columns([1, 3])
         with col1:
             st.download_button(
-                label="📥 Download Analysis",
+                label="📥 Download Audit Report",
                 data=st.session_state.ai_response,
-                file_name="image_strategy_analysis.md",
+                file_name="image_audit_report.md",
                 mime="text/markdown",
                 key="download_analysis"
             )
@@ -2457,7 +3487,7 @@ if st.session_state.analysis_done and st.session_state.product:
     # =========================================================
     # IMAGE GENERATION SECTION
     # =========================================================
-    st.markdown('<p class="section-header">🎨 AI Image Generation Studio</p>', unsafe_allow_html=True)
+    st.subheader("🎨 AI Image Generation Studio")
     
     image_brief = st.session_state.image_brief
     
@@ -2486,7 +3516,7 @@ if st.session_state.analysis_done and st.session_state.product:
         # =========================================================
         # IMAGE GENERATION INTERFACE
         # =========================================================
-        st.markdown('<p class="section-header">🖼️ Generate AI Product Images</p>', unsafe_allow_html=True)
+        st.subheader("🖼️ Generate AI Product Images")
         
         st.success("✨ **Ready to Generate!** Select image types below. Your analysis is preserved - generating images won't reset your data!")
         
@@ -2531,7 +3561,7 @@ if st.session_state.analysis_done and st.session_state.product:
             elif not user_api_key:
                 st.error("❌ Please enter your OpenAI API key.")
             else:
-                st.markdown('<p class="section-header">🎨 Generating Images...</p>', unsafe_allow_html=True)
+                st.subheader("🎨 Generating Images...")
                 
                 progress_bar = st.progress(0)
                 total_images = len(selected_images)
@@ -2601,7 +3631,7 @@ if st.session_state.analysis_done and st.session_state.product:
         # Show previously generated images
         if st.session_state.generated_images:
             st.markdown("---")
-            st.markdown('<p class="section-header">📁 Generated Images Gallery</p>', unsafe_allow_html=True)
+            st.subheader("📁 Generated Images Gallery")
             
             # Display in grid
             img_keys = list(st.session_state.generated_images.keys())
